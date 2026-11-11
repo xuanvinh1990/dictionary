@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { Search, Sparkles, BookMarked, Sliders, ChevronDown, Check, RefreshCw } from 'lucide-react';
+import { Search, Sparkles, BookMarked, Sliders, ChevronDown, Check, RefreshCw, Volume2, ExternalLink } from 'lucide-react';
 import {
   GLOBAL_SUCCESS_CURRICULUM,
   GradeCurriculum,
   CurriculumUnit,
 } from '../data/globalSuccessCurriculum';
+import { deriveIPADetails, playEnglishAudio } from '../utils/ipaDictionaryApi';
 
 interface CurriculumSelectorProps {
   selectedGrade: number;
@@ -57,9 +58,7 @@ export const CurriculumSelector: React.FC<CurriculumSelectorProps> = ({
     currentGradeData.units[5]; // Default Unit 6: Lifestyles
 
   const dictionaryOptions = [
-    { id: 'Oxford Advanced Learner\'s Dictionary', label: 'Oxford Learner\'s (OALD)' },
-    { id: 'Cambridge Advanced Learner\'s Dictionary', label: 'Cambridge Dictionary (CALD)' },
-    { id: 'Longman Dictionary of Contemporary English', label: 'Longman (LDOCE)' },
+    { id: "Cambridge Advanced Learner's Dictionary", label: "Cambridge Dictionary (CALD)" },
   ];
 
   return (
@@ -207,6 +206,50 @@ export const CurriculumSelector: React.FC<CurriculumSelectorProps> = ({
             </button>
           </div>
 
+          {/* Live Cambridge IPA Preview */}
+          {keyword.trim() && (
+            <div className="mt-2.5 px-3.5 py-2 bg-blue-50/70 rounded-xl border border-blue-200/80 flex flex-wrap items-center justify-between gap-2.5 text-xs">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-bold text-blue-900">Phiên âm Cambridge:</span>
+                <span className="font-mono text-sm font-bold text-blue-950 bg-white px-2.5 py-0.5 rounded-md border border-blue-200 shadow-2xs">
+                  {deriveIPADetails(keyword.trim()).cambridge.uk}
+                </span>
+                <a
+                  href={`https://dictionary.cambridge.org/dictionary/english/${encodeURIComponent(keyword.trim().toLowerCase())}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-700 hover:text-blue-900 bg-white px-2 py-0.5 rounded border border-blue-200 hover:bg-blue-50 transition-colors shadow-2xs"
+                  title="Mở tra cứu trực tiếp trên https://dictionary.cambridge.org/"
+                >
+                  <span>dictionary.cambridge.org</span>
+                  <ExternalLink className="w-3 h-3 text-blue-700" />
+                </a>
+              </div>
+
+              {/* Audio Listen Buttons */}
+              <div className="flex items-center gap-1.5 self-end sm:self-auto">
+                <button
+                  type="button"
+                  onClick={() => playEnglishAudio(keyword.trim(), 'UK', deriveIPADetails(keyword.trim()).audioUrlUk)}
+                  className="px-2.5 py-1 rounded-md bg-white hover:bg-blue-100 text-blue-800 border border-blue-200 text-xs font-bold flex items-center gap-1 shadow-2xs transition-colors"
+                  title="Phát âm chuẩn Anh - Anh (UK - Cambridge)"
+                >
+                  <span>🇬🇧 UK</span>
+                  <Volume2 className="w-3.5 h-3.5 text-blue-700" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => playEnglishAudio(keyword.trim(), 'US', deriveIPADetails(keyword.trim()).audioUrlUs)}
+                  className="px-2.5 py-1 rounded-md bg-white hover:bg-blue-100 text-blue-800 border border-blue-200 text-xs font-bold flex items-center gap-1 shadow-2xs transition-colors"
+                  title="Phát âm chuẩn Anh - Mỹ (US - Cambridge)"
+                >
+                  <span>🇺🇸 US</span>
+                  <Volume2 className="w-3.5 h-3.5 text-blue-700" />
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Quick select vocabulary chips from current Unit */}
           <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
             <span className="text-[11px] font-medium text-slate-500 mr-1">
@@ -247,22 +290,18 @@ export const CurriculumSelector: React.FC<CurriculumSelectorProps> = ({
 
           {showAdvanced && (
             <div className="mt-3 p-4 bg-slate-50 rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
-              {/* Dictionary source */}
+              {/* Dictionary source (Locked to Cambridge) */}
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">
-                  Nguồn từ điển tham chiếu
+                  Chuẩn quy ước phiên âm & từ điển
                 </label>
-                <select
-                  value={dictionarySource}
-                  onChange={(e) => onChangeDictionarySource(e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-2 text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-600"
-                >
-                  {dictionaryOptions.map((opt) => (
-                    <option key={opt.id} value={opt.id}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
+                <div className="w-full bg-blue-50/90 border border-blue-200 rounded-lg px-2.5 py-2 text-blue-950 font-bold flex items-center justify-between text-xs">
+                  <span>Cambridge Dictionary (CALD)</span>
+                  <Check className="w-4 h-4 text-blue-700" />
+                </div>
+                <span className="text-[10px] text-slate-500 mt-1 block">
+                  Cố định theo chuẩn phiên âm từ điển Cambridge
+                </span>
               </div>
 
               {/* Question Count & Max Words */}

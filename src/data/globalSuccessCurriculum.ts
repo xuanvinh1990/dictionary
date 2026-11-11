@@ -563,9 +563,29 @@ export const GLOBAL_SUCCESS_CURRICULUM: GradeCurriculum[] = [
   },
 ];
 
+export interface DictionaryPhonetics {
+  uk: string;
+  us: string;
+  audioUk?: string;
+  audioUs?: string;
+  syllables?: string;
+  note?: string;
+}
+
+export interface IPADetails {
+  oxford: DictionaryPhonetics;
+  cambridge: DictionaryPhonetics;
+  longman: DictionaryPhonetics;
+  syllables?: string;
+  audioUrlUk?: string;
+  audioUrlUs?: string;
+}
+
 export interface DictionaryExercise {
   keyword: string;
   ipa: string;
+  ipaDetails?: IPADetails;
+  cambridgeUrl?: string;
   partOfSpeech: string;
   dictionarySource: string;
   definitionNumber?: string;
@@ -591,9 +611,29 @@ export interface DictionaryExercise {
 // Pre-seeded high quality sample from the user's uploaded image (Word: habit)
 export const SAMPLE_HABIT_EXERCISE: DictionaryExercise = {
   keyword: 'habit',
-  ipa: "/'hæbɪt/",
+  ipa: "/ˈhæb.ɪt/",
+  cambridgeUrl: "https://dictionary.cambridge.org/dictionary/english/habit",
+  ipaDetails: {
+    oxford: {
+      uk: "/'hæbɪt/",
+      us: "/ˈhæbɪt/",
+      note: "Oxford Advanced Learner's Dictionary (OALD)",
+    },
+    cambridge: {
+      uk: "/ˈhæb.ɪt/",
+      us: "/ˈhæb.ət/",
+      note: "Cambridge Advanced Learner's Dictionary (CALD)",
+    },
+    longman: {
+      uk: "/ˈhæbɪt/",
+      us: "/ˈhæbɪt/",
+      syllables: "hab‧it",
+      note: "Longman Dictionary of Contemporary English (LDOCE)",
+    },
+    syllables: "hab·it",
+  },
   partOfSpeech: 'noun',
-  dictionarySource: "Oxford Advanced Learner's Dictionary",
+  dictionarySource: "Cambridge Advanced Learner's Dictionary",
   definitionNumber: '1.',
   grammarTag: '[countable]',
   definitionText: 'a thing that you do often and almost without thinking, especially something that is hard to stop doing',
@@ -657,7 +697,7 @@ export const PRESET_EXERCISES: { [key: string]: { grade: number; unit: number; u
       keyword: 'craft',
       ipa: '/krɑːft/',
       partOfSpeech: 'noun',
-      dictionarySource: "Oxford Advanced Learner's Dictionary",
+      dictionarySource: "Cambridge Advanced Learner's Dictionary",
       definitionNumber: '1.',
       grammarTag: '[countable, uncountable]',
       definitionText: 'an activity involving a special skill at making things with your hands, or the objects produced by this skill',
@@ -763,7 +803,7 @@ export const PRESET_EXERCISES: { [key: string]: { grade: number; unit: number; u
       keyword: 'recycle',
       ipa: '/ˌriːˈsaɪ.kəl/',
       partOfSpeech: 'verb',
-      dictionarySource: "Longman Dictionary of Contemporary English",
+      dictionarySource: "Cambridge Advanced Learner's Dictionary",
       definitionNumber: '1.',
       grammarTag: '[transitive]',
       definitionText: 'to put used objects or materials through a special process so that they can be used again',

@@ -231,9 +231,23 @@ export async function exportExerciseToDocx(
             ],
           }),
 
+          // Cambridge source note
+          new Paragraph({
+            spacing: { before: 60, after: 140 },
+            alignment: AlignmentType.RIGHT,
+            children: [
+              new TextRun({
+                text: `* Nguồn tra cứu từ điển: Cambridge Advanced Learner's Dictionary (https://dictionary.cambridge.org/)`,
+                italics: true,
+                size: 16,
+                color: '64748B',
+              }),
+            ],
+          }),
+
           // Answers box header
           new Paragraph({
-            spacing: { before: 200, after: 120 },
+            spacing: { before: 140, after: 120 },
             children: [
               new TextRun({
                 text: 'ANSWERS',

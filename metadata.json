@@ -1,6 +1,6 @@
 {
   "name": "Global Success Dictionary Exercise Generator",
-  "description": "Tạo bài tập tra cứu từ điển (Dictionary Entry Completion) chuẩn đề thi Tiếng Anh Global Success lớp 6, 7, 8, 9 với định nghĩa Oxford/Cambridge, xuất file Word và copy tiện lợi.",
+  "description": "Tạo bài tập tra cứu từ điển (Dictionary Entry Completion) chuẩn đề thi Tiếng Anh Global Success lớp 6, 7, 8, 9 với phiên âm và định nghĩa chuẩn Cambridge Dictionary, xuất file Word và copy tiện lợi.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

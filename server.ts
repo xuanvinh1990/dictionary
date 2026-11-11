@@ -35,8 +35,160 @@ interface GenerateRequest {
   maxWords?: number;
 }
 
+import { deriveIPADetails } from './src/utils/ipaDictionaryApi';
+
+interface CambridgeOnlineResult {
+  keyword: string;
+  ukIpa: string;
+  usIpa: string;
+  ukAudio?: string;
+  usAudio?: string;
+  pos: string;
+  grammarTag: string;
+  defText: string;
+  examples: string[];
+  sourceUrl: string;
+}
+
+/**
+ * Fetch and parse authentic live entry directly from https://dictionary.cambridge.org/
+ */
+async function fetchCambridgeDictionaryOnline(word: string): Promise<CambridgeOnlineResult | null> {
+  const clean = encodeURIComponent(word.trim().toLowerCase());
+  const url = `https://dictionary.cambridge.org/dictionary/english/${clean}`;
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3500);
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+    });
+    clearTimeout(timeout);
+
+    if (!res.ok) return null;
+    const html = await res.text();
+
+    const ukIpaMatch = html.match(/class="uk dpron-i\s*".*?class="ipa dipa[^"]*">([^<]+)<\/span>/s);
+    const usIpaMatch = html.match(/class="us dpron-i\s*".*?class="ipa dipa[^"]*">([^<]+)<\/span>/s);
+    const ukAudioMatch = html.match(/class="uk dpron-i\s*".*?src="(\/media\/english\/uk_pron\/[^"]+\.mp3)"/s);
+    const usAudioMatch = html.match(/class="us dpron-i\s*".*?src="(\/media\/english\/us_pron\/[^"]+\.mp3)"/s);
+    const posMatch = html.match(/class="pos dpos"[^>]*>([^<]+)<\/span>/);
+    const gramMatch = html.match(/<span class="gram dgram"><a[^>]*>\[\s*<span class="gc dgc">([^<]+)<\/span>\s*\]<\/a><\/span>/);
+    const defMatch = html.match(/<div class="def ddef_d db">([\s\S]*?)<\/div>/);
+    let defText = defMatch ? defMatch[1].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim() : '';
+    if (defText.endsWith(':')) defText = defText.slice(0, -1).trim();
+
+    const exMatches = [...html.matchAll(/<span class="eg deg">([\s\S]*?)<\/span>/g)];
+    const examples = exMatches
+      .map((m) => m[1].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim())
+      .filter((s) => s.length > 5)
+      .slice(0, 6);
+
+    let ukIpa = ukIpaMatch ? `/${ukIpaMatch[1].trim()}/` : '';
+    let usIpa = usIpaMatch ? `/${usIpaMatch[1].trim()}/` : ukIpa;
+
+    // Normalize mid-dots if needed to Cambridge syllable dot
+    ukIpa = ukIpa.replace(/·/g, '.');
+    usIpa = usIpa.replace(/·/g, '.');
+
+    if (!ukIpa && !usIpa) return null;
+
+    return {
+      keyword: word,
+      ukIpa,
+      usIpa,
+      ukAudio: ukAudioMatch ? `https://dictionary.cambridge.org${ukAudioMatch[1]}` : undefined,
+      usAudio: usAudioMatch ? `https://dictionary.cambridge.org${usAudioMatch[1]}` : undefined,
+      pos: posMatch ? posMatch[1].trim() : 'noun',
+      grammarTag: gramMatch ? `[${gramMatch[1].trim()}]` : '[countable]',
+      defText,
+      examples,
+      sourceUrl: url,
+    };
+  } catch {
+    return null;
+  }
+}
+
 app.get('/api/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', hasApiKey: !!process.env.GEMINI_API_KEY });
+});
+
+app.get('/api/dictionary-ipa', async (req: Request, res: Response) => {
+  const word = (req.query.word as string || '').trim().toLowerCase();
+  if (!word) {
+    return res.status(400).json({ error: 'Thiếu tham số word' });
+  }
+
+  try {
+    const details = deriveIPADetails(word);
+
+    // 1. First priority: Fetch live directly from https://dictionary.cambridge.org/
+    const cambridgeLive = await fetchCambridgeDictionaryOnline(word);
+    if (cambridgeLive) {
+      if (cambridgeLive.ukIpa) {
+        details.cambridge.uk = cambridgeLive.ukIpa;
+        details.oxford.uk = cambridgeLive.ukIpa.replace(/\./g, '');
+        details.longman.uk = cambridgeLive.ukIpa.replace(/\./g, '');
+      }
+      if (cambridgeLive.usIpa) {
+        details.cambridge.us = cambridgeLive.usIpa;
+        details.oxford.us = cambridgeLive.usIpa.replace(/\./g, '');
+        details.longman.us = cambridgeLive.usIpa.replace(/\./g, '');
+      }
+      if (cambridgeLive.ukAudio) {
+        details.audioUrlUk = cambridgeLive.ukAudio;
+        details.cambridge.audioUk = cambridgeLive.ukAudio;
+      }
+      if (cambridgeLive.usAudio) {
+        details.audioUrlUs = cambridgeLive.usAudio;
+        details.cambridge.audioUs = cambridgeLive.usAudio;
+      }
+      (details as any).sourceUrl = cambridgeLive.sourceUrl;
+      (details as any).defText = cambridgeLive.defText;
+      (details as any).grammarTag = cambridgeLive.grammarTag;
+      return res.json(details);
+    }
+
+    // 2. Fallback: Try fetching public audio recordings
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 1800);
+      const onlineRes = await fetch(
+        `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`,
+        { signal: controller.signal }
+      );
+      clearTimeout(timeout);
+
+      if (onlineRes.ok) {
+        const data = await onlineRes.json();
+        if (Array.isArray(data) && data[0] && Array.isArray(data[0].phonetics)) {
+          for (const p of data[0].phonetics) {
+            if (p.audio) {
+              if (p.audio.includes('-uk') || p.audio.includes('en-uk')) {
+                details.audioUrlUk = p.audio;
+                details.cambridge.audioUk = p.audio;
+              } else if (p.audio.includes('-us') || p.audio.includes('en-us') || !details.audioUrlUs) {
+                details.audioUrlUs = p.audio;
+                details.cambridge.audioUs = p.audio;
+              }
+            }
+          }
+        }
+      }
+    } catch {
+      // Ignore network timeout
+    }
+
+    return res.json(details);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Lỗi tra cứu IPA' });
+  }
 });
 
 app.post('/api/generate-exercise', async (req: Request, res: Response) => {
@@ -47,7 +199,7 @@ app.post('/api/generate-exercise', async (req: Request, res: Response) => {
       grade = 8,
       unit = 6,
       unitTitle = 'Lifestyles',
-      dictionarySource = 'Oxford Advanced Learner\'s Dictionary',
+      dictionarySource = 'Cambridge Advanced Learner\'s Dictionary',
       questionCount = 2,
       startQuestionNum = 35,
       maxWords = 3,
@@ -66,18 +218,40 @@ app.post('/api/generate-exercise', async (req: Request, res: Response) => {
       });
     }
 
+    // 1. Fetch live dictionary entry directly from https://dictionary.cambridge.org/
+    const cambridgeOnline = await fetchCambridgeDictionaryOnline(cleanKeyword);
+
+    let cambridgeContext = '';
+    if (cambridgeOnline) {
+      cambridgeContext = `
+DỮ LIỆU GỐC TRA CỨU TRỰC TIẾP TỪ TRANG NGUỒN CHÍNH THỨC https://dictionary.cambridge.org/dictionary/english/${encodeURIComponent(cleanKeyword)}:
+- Headword: "${cambridgeOnline.keyword}"
+- Phiên âm chuẩn Cambridge UK: "${cambridgeOnline.ukIpa}"
+- Phiên âm chuẩn Cambridge US: "${cambridgeOnline.usIpa}"
+- Từ loại (Part of Speech): "${cambridgeOnline.pos}"
+- Nhãn ngữ pháp: "${cambridgeOnline.grammarTag}"
+- Định nghĩa gốc từ Cambridge: "${cambridgeOnline.defText}"
+- Các câu ví dụ gốc từ trang từ điển Cambridge:
+${cambridgeOnline.examples.map((ex) => `  * ${ex}`).join('\n')}
+
+LƯU Ý QUAN TRỌNG: Hãy sử dụng CHÍNH XÁC phiên âm IPA của Cambridge "${cambridgeOnline.ukIpa}" và định nghĩa gốc này. Trích xuất các cụm từ (collocations) từ các ví dụ trên để làm đáp án chuẩn cho học sinh.
+`;
+    }
+
     const prompt = `
 Bạn là chuyên gia khảo thí và giáo viên Tiếng Anh nhiều kinh nghiệm chuyên luyện thi tuyển sinh vào lớp 10 và giảng dạy giáo trình Global Success (Bộ GD&ĐT) khối ${grade}.
 Nhiệm vụ: Tạo một câu hỏi bài tập tra cứu từ điển dạng "Dictionary Entry Sentence Completion" (như đề thi tuyển sinh lớp 10 TP.HCM / đề kiểm tra định kỳ Global Success) cho từ khóa: "${cleanKeyword}".
+Trang nguồn tra cứu mục từ điển: "https://dictionary.cambridge.org/"
 Chủ đề liên quan: Tiếng Anh ${grade} - Unit ${unit}: ${unitTitle}.
+${cambridgeContext}
 
 YÊU CẦU ĐẶC BIỆT THEO CHUẨN ĐỀ THI:
-1. Tra cứu định nghĩa theo chuẩn từ điển học sinh cao cấp (${dictionarySource}):
+1. Tra cứu định nghĩa và phiên âm chuẩn từ điển Cambridge (Cambridge Advanced Learner's Dictionary - CALD - https://dictionary.cambridge.org/):
    - Headword: "${cleanKeyword}"
-   - IPA chuẩn xác (Anh - Anh hoặc Anh - Mỹ, ví dụ: /'hæbɪt/)
-   - Từ loại chính xác (noun, verb, adjective, etc.)
-   - Định nghĩa xúc tích, chuẩn xác, có ghi nhãn ngữ pháp như [countable], [uncountable], [transitive], etc.
-   - Danh sách 4 đến 5 câu ví dụ thực tế chuẩn từ điển (Oxford/Cambridge/Longman).
+   - IPA chuẩn xác theo từ điển Cambridge (CALD) có dấu chấm phân chia âm tiết đầy đủ (ví dụ: ${cambridgeOnline?.ukIpa || '/ˈhæb.ɪt/'})
+   - Từ loại chính xác (${cambridgeOnline?.pos || 'noun, verb, adjective, etc.'})
+   - Định nghĩa xúc tích, chuẩn xác, có ghi nhãn ngữ pháp như ${cambridgeOnline?.grammarTag || '[countable], [uncountable], [transitive]'}, etc.
+   - Danh sách 4 đến 5 câu ví dụ thực tế chuẩn từ điển Cambridge.
    - Trong mỗi câu ví dụ, hãy chỉ rõ cụm từ/collocation quan trọng (độ dài 2-3 từ) để làm đáp án tiềm năng. Ví dụ với "habit": "eating habits", "develop the habit", "break the habit", "let it become a habit".
 
 2. Tạo đúng ${questionCount} câu hỏi bài tập điền khuyết:
@@ -96,13 +270,13 @@ YÊU CẦU ĐẶC BIỆT THEO CHUẨN ĐỀ THI:
         model: 'gemini-3.8-flash',
         contents: prompt,
         config: {
-          systemInstruction: `You are a professional ESL test designer and senior English teacher specializing in Vietnam's Ministry of Education "Global Success" curriculum (Grades 6-9) and Grade 10 High School Entrance Exams (Tuyển sinh lớp 10). Return strictly valid JSON conforming to the requested schema. Ensure authentic Oxford/Cambridge dictionary style and high pedagogical precision.`,
+          systemInstruction: `You are a professional ESL test designer and senior English teacher specializing in Vietnam's Ministry of Education "Global Success" curriculum (Grades 6-9) and Grade 10 High School Entrance Exams (Tuyển sinh lớp 10). Return strictly valid JSON conforming to the requested schema. Ensure authentic Cambridge Advanced Learner's Dictionary (CALD) style with syllable-divided IPA transcription and high pedagogical precision.`,
           responseMimeType: 'application/json',
           responseSchema: {
             type: Type.OBJECT,
             properties: {
               keyword: { type: Type.STRING },
-              ipa: { type: Type.STRING, description: 'Phonetic transcription, e.g. /ˈhæb.ɪt/' },
+              ipa: { type: Type.STRING, description: 'Phonetic transcription according to Cambridge Dictionary standard with syllable dots, e.g. /ˈhæb.ɪt/' },
               partOfSpeech: { type: Type.STRING, description: 'e.g. noun, verb, adjective' },
               dictionarySource: { type: Type.STRING },
               definitionNumber: { type: Type.STRING, description: 'e.g. 1.' },
@@ -171,21 +345,53 @@ YÊU CẦU ĐẶC BIỆT THEO CHUẨN ĐỀ THI:
 
     if (!response || !response.text) {
       console.log(`Using fallback generator for "${cleanKeyword}" due to API unavailability`);
-      const fallbackData = createCurriculumFallback(cleanKeyword, grade, unit, unitTitle, dictionarySource, questionCount, startQuestionNum, maxWords);
+      const fallbackData = createCurriculumFallback(
+        cleanKeyword,
+        grade,
+        unit,
+        unitTitle,
+        dictionarySource,
+        questionCount,
+        startQuestionNum,
+        maxWords,
+        cambridgeOnline
+      );
       return res.json(fallbackData);
     }
 
     const parsedData = JSON.parse(response.text);
+    const ipaDetails = deriveIPADetails(cleanKeyword, parsedData.ipa);
+
+    if (cambridgeOnline) {
+      parsedData.ipa = cambridgeOnline.ukIpa;
+      ipaDetails.cambridge.uk = cambridgeOnline.ukIpa;
+      ipaDetails.cambridge.us = cambridgeOnline.usIpa;
+      if (cambridgeOnline.ukAudio) {
+        ipaDetails.audioUrlUk = cambridgeOnline.ukAudio;
+        ipaDetails.cambridge.audioUk = cambridgeOnline.ukAudio;
+      }
+      if (cambridgeOnline.usAudio) {
+        ipaDetails.audioUrlUs = cambridgeOnline.usAudio;
+        ipaDetails.cambridge.audioUs = cambridgeOnline.usAudio;
+      }
+    } else {
+      parsedData.ipa = ipaDetails.cambridge.uk;
+    }
+
+    parsedData.ipaDetails = ipaDetails;
+    parsedData.cambridgeUrl = `https://dictionary.cambridge.org/dictionary/english/${encodeURIComponent(cleanKeyword)}`;
+    parsedData.dictionarySource = "Cambridge Advanced Learner's Dictionary (dictionary.cambridge.org)";
     return res.json(parsedData);
   } catch (error: any) {
     console.error('Error generating exercise, attempting fallback:', error);
     try {
+      const cleanWord = (req.body.keyword || 'habit').trim().toLowerCase();
       const fallbackData = createCurriculumFallback(
-        (req.body.keyword || 'habit').trim().toLowerCase(),
+        cleanWord,
         req.body.grade || 8,
         req.body.unit || 6,
         req.body.unitTitle || 'Lifestyles',
-        req.body.dictionarySource || "Oxford Advanced Learner's Dictionary",
+        req.body.dictionarySource || "Cambridge Advanced Learner's Dictionary",
         req.body.questionCount || 2,
         req.body.startQuestionNum || 35,
         req.body.maxWords || 3
@@ -208,7 +414,8 @@ function createCurriculumFallback(
   source: string,
   questionCount: number,
   startNum: number,
-  maxWords: number
+  maxWords: number,
+  cambridgeOnline?: CambridgeOnlineResult | null
 ) {
   // Common vocabulary database for Global Success
   const DICT_BANK: Record<string, {
@@ -220,7 +427,7 @@ function createCurriculumFallback(
     questions: { before: string; after: string; answer: string; meaning: string; explanation: string }[];
   }> = {
     habit: {
-      ipa: "/'hæbɪt/",
+      ipa: "/ˈhæb.ɪt/",
       pos: 'noun',
       grammarTag: '[countable]',
       definition: 'a thing that you do often and almost without thinking, especially something that is hard to stop doing',
@@ -407,14 +614,39 @@ function createCurriculumFallback(
     explanation: q.explanation,
   }));
 
+  const ipaDetails = deriveIPADetails(word, cambridgeOnline?.ukIpa || item.ipa);
+
+  if (cambridgeOnline) {
+    if (cambridgeOnline.ukIpa) {
+      ipaDetails.cambridge.uk = cambridgeOnline.ukIpa;
+      ipaDetails.oxford.uk = cambridgeOnline.ukIpa.replace(/\./g, '');
+      ipaDetails.longman.uk = cambridgeOnline.ukIpa.replace(/\./g, '');
+    }
+    if (cambridgeOnline.usIpa) {
+      ipaDetails.cambridge.us = cambridgeOnline.usIpa;
+      ipaDetails.oxford.us = cambridgeOnline.usIpa.replace(/\./g, '');
+      ipaDetails.longman.us = cambridgeOnline.usIpa.replace(/\./g, '');
+    }
+    if (cambridgeOnline.ukAudio) {
+      ipaDetails.audioUrlUk = cambridgeOnline.ukAudio;
+      ipaDetails.cambridge.audioUk = cambridgeOnline.ukAudio;
+    }
+    if (cambridgeOnline.usAudio) {
+      ipaDetails.audioUrlUs = cambridgeOnline.usAudio;
+      ipaDetails.cambridge.audioUs = cambridgeOnline.usAudio;
+    }
+  }
+
   return {
     keyword: word,
-    ipa: item.ipa,
-    partOfSpeech: item.pos,
-    dictionarySource: source,
+    ipa: cambridgeOnline?.ukIpa || ipaDetails.cambridge.uk,
+    ipaDetails: ipaDetails,
+    cambridgeUrl: `https://dictionary.cambridge.org/dictionary/english/${encodeURIComponent(word)}`,
+    partOfSpeech: cambridgeOnline?.pos || item.pos,
+    dictionarySource: "Cambridge Advanced Learner's Dictionary (dictionary.cambridge.org)",
     definitionNumber: '1.',
-    grammarTag: item.grammarTag,
-    definitionText: item.definition,
+    grammarTag: cambridgeOnline?.grammarTag || item.grammarTag,
+    definitionText: (cambridgeOnline?.defText && cambridgeOnline.defText.length > 10) ? cambridgeOnline.defText : item.definition,
     examples: item.examples,
     instructionEn: `Look at the entry of the word "${word}" in a dictionary. Complete the sentences with phrases from the entry. Do not use more than ${maxWords === 3 ? 'THREE' : maxWords} words for each phrase.`,
     instructionVi: `(Từ câu ${startNum} đến câu ${startNum + selectedQuestions.length - 1}, dựa vào bảng bên dưới, thí sinh chọn cụm từ thích hợp (không quá ${maxWords} từ) để hoàn chỉnh mỗi câu và viết câu trả lời vào Phần ANSWERS.)`,

@@ -18,6 +18,7 @@ export function formatExerciseText(
   exercise.examples.forEach((ex) => {
     content += `│   o ${ex.fullSentence}\n`;
   });
+  content += `│ [Nguồn tra cứu: https://dictionary.cambridge.org/]\n`;
   content += `└─────────────────────────────────────────────────────────────\n\n`;
 
   content += `ANSWERS\n`;

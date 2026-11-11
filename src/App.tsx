@@ -28,7 +28,7 @@ export default function App() {
   const [selectedUnit, setSelectedUnit] = useState<number>(6);
   const [keyword, setKeyword] = useState<string>('habit');
   const [dictionarySource, setDictionarySource] = useState<string>(
-    "Oxford Advanced Learner's Dictionary"
+    "Cambridge Advanced Learner's Dictionary"
   );
   const [questionCount, setQuestionCount] = useState<number>(2);
   const [startQuestionNum, setStartQuestionNum] = useState<number>(35);
@@ -176,7 +176,7 @@ export default function App() {
                 <span>•</span>
                 <span>Luyện thi vào lớp 10 THPT</span>
                 <span>•</span>
-                <span>Oxford / Cambridge / Longman</span>
+                <span>Chuẩn Từ Điển Cambridge (CALD)</span>
               </div>
               <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
                 Công Cụ Soạn Bài Tập Tra Cứu Từ Điển Tiếng Anh

@@ -22,6 +22,9 @@ export const Header: React.FC<HeaderProps> = ({ onExportDocx, isExporting, hasEx
               <span className="text-xs font-semibold px-2 py-0.5 rounded bg-blue-100 text-blue-800 hidden sm:inline-block">
                 Global Success 6-9
               </span>
+              <span className="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 hidden md:inline-block">
+                Oxford 3000 (60 chủ đề)
+              </span>
             </div>
             <p className="text-xs text-slate-500 hidden md:block">
               Dạng bài Tra cứu Từ điển (Dictionary Entry Completion) luyện thi vào 10

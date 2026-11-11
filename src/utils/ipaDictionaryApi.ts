@@ -1,4 +1,95 @@
-import { IPADetails } from '../data/globalSuccessCurriculum';
+import { IPADetails, GLOBAL_SUCCESS_CURRICULUM } from '../data/globalSuccessCurriculum';
+import { findOxfordWord, searchOxfordVocabulary, OxfordWordItem } from '../data/oxfordVocabulary3000';
+
+export interface CurriculumKeywordItem {
+  word: string;
+  pos: string;
+  ipa: string;
+  meaningVi: string;
+  grade: number;
+  unit: number;
+  unitTitle: string;
+}
+
+// Build index map of all 1,011 curriculum keywords for O(1) retrieval
+const CURRICULUM_WORD_MAP = new Map<string, CurriculumKeywordItem>();
+
+for (const g of GLOBAL_SUCCESS_CURRICULUM) {
+  for (const u of g.units) {
+    for (const kw of u.suggestedKeywords) {
+      const clean = kw.word.trim().toLowerCase();
+      if (!CURRICULUM_WORD_MAP.has(clean)) {
+        CURRICULUM_WORD_MAP.set(clean, {
+          word: kw.word,
+          pos: kw.pos,
+          ipa: kw.ipa || '',
+          meaningVi: kw.meaningVi,
+          grade: g.grade,
+          unit: u.unit,
+          unitTitle: u.title,
+        });
+      }
+    }
+  }
+}
+
+export function findCurriculumWord(word: string): CurriculumKeywordItem | undefined {
+  return CURRICULUM_WORD_MAP.get(word.trim().toLowerCase());
+}
+
+export interface UnifiedSearchResult {
+  word: string;
+  pos: string;
+  ipa: string;
+  meaningVi: string;
+  source: 'curriculum' | 'oxford3000';
+  badge: string;
+}
+
+export function searchAllKeywords(query: string, limit = 10): UnifiedSearchResult[] {
+  const clean = query.trim().toLowerCase();
+  if (!clean || clean.length < 2) return [];
+
+  const results: UnifiedSearchResult[] = [];
+  const seen = new Set<string>();
+
+  // 1. Check curriculum words
+  for (const item of CURRICULUM_WORD_MAP.values()) {
+    if (results.length >= limit) break;
+    const lower = item.word.toLowerCase();
+    if (lower.includes(clean) || item.meaningVi.toLowerCase().includes(clean)) {
+      results.push({
+        word: item.word,
+        pos: item.pos,
+        ipa: item.ipa,
+        meaningVi: item.meaningVi,
+        source: 'curriculum',
+        badge: `Lớp ${item.grade} - U${item.unit}`,
+      });
+      seen.add(lower);
+    }
+  }
+
+  // 2. Check Oxford 3000 words
+  const oxMatches = searchOxfordVocabulary(clean, limit);
+  for (const ox of oxMatches) {
+    if (results.length >= limit) break;
+    const lower = ox.word.toLowerCase();
+    if (!seen.has(lower)) {
+      results.push({
+        word: ox.word,
+        pos: ox.pos,
+        ipa: ox.ipa,
+        meaningVi: ox.meaningVi,
+        source: 'oxford3000',
+        badge: ox.topicName,
+      });
+      seen.add(lower);
+    }
+  }
+
+  return results;
+}
 
 /**
  * High-precision IPA dictionary mapping for key curriculum and ESL terms
@@ -292,6 +383,28 @@ export function getCambridgeIPA(word: string, existingIPA?: string): { uk: strin
     };
   }
 
+  // Check Global Success Curriculum (1,011 textbook keywords)
+  const curr = CURRICULUM_WORD_MAP.get(cleanWord);
+  if (curr && curr.ipa) {
+    return {
+      uk: curr.ipa,
+      us: curr.ipa,
+      audioUrlUk: `https://api.dictionaryapi.dev/media/pronunciations/en/${encodeURIComponent(cleanWord)}-uk.mp3`,
+      audioUrlUs: `https://api.dictionaryapi.dev/media/pronunciations/en/${encodeURIComponent(cleanWord)}-us.mp3`,
+    };
+  }
+
+  // Check Oxford 3000
+  const ox = findOxfordWord(cleanWord);
+  if (ox && ox.ipa) {
+    return {
+      uk: ox.ipa,
+      us: ox.ipa,
+      audioUrlUk: `https://api.dictionaryapi.dev/media/pronunciations/en/${encodeURIComponent(cleanWord)}-uk.mp3`,
+      audioUrlUs: `https://api.dictionaryapi.dev/media/pronunciations/en/${encodeURIComponent(cleanWord)}-us.mp3`,
+    };
+  }
+
   // Generate Cambridge standard IPA with syllable periods and proper stress mark
   const base = existingIPA ? existingIPA.replace(/^\/+|\/+$/g, '') : cleanWord;
   const cambridgeUK = base.includes('/') ? base : `/${base.startsWith('ˈ') ? '' : 'ˈ'}${base}/`;
@@ -308,9 +421,65 @@ export function getCambridgeIPA(word: string, existingIPA?: string): { uk: strin
 export function deriveIPADetails(word: string, existingIPA?: string): IPADetails {
   const cleanWord = word.trim().toLowerCase();
 
-  // If in curated database, return rich record
+  // 1. If in curated preset database, return rich record
   if (OFFICIAL_IPA_DATABASE[cleanWord]) {
     return OFFICIAL_IPA_DATABASE[cleanWord];
+  }
+
+  // 2. Tra cứu từ Giáo trình Global Success (1.011 từ vựng chính khóa Lớp 6 - 9 từ file đính kèm)
+  const curr = CURRICULUM_WORD_MAP.get(cleanWord);
+  if (curr && curr.ipa) {
+    const cambridgeIpa = curr.ipa;
+    const cleanIpaNoDot = cambridgeIpa.replace(/\./g, '');
+    return {
+      oxford: {
+        uk: cleanIpaNoDot,
+        us: cleanIpaNoDot,
+        note: `Global Success Lớp ${curr.grade} (Unit ${curr.unit}: ${curr.unitTitle}) - ${curr.meaningVi}`,
+      },
+      cambridge: {
+        uk: cambridgeIpa,
+        us: cambridgeIpa,
+        note: `Chuẩn phiên âm SGK Global Success Lớp ${curr.grade} (${curr.pos}): ${curr.meaningVi}`,
+      },
+      longman: {
+        uk: cleanIpaNoDot,
+        us: cleanIpaNoDot,
+        syllables: curr.word,
+        note: `LDOCE (${curr.pos}): ${curr.meaningVi}`,
+      },
+      syllables: curr.word,
+      audioUrlUk: `https://api.dictionaryapi.dev/media/pronunciations/en/${encodeURIComponent(cleanWord)}-uk.mp3`,
+      audioUrlUs: `https://api.dictionaryapi.dev/media/pronunciations/en/${encodeURIComponent(cleanWord)}-us.mp3`,
+    };
+  }
+
+  // 3. Tra cứu từ thư viện 3000 từ vựng Oxford theo 60 chủ đề (file đính kèm)
+  const oxfordItem = findOxfordWord(cleanWord);
+  if (oxfordItem) {
+    const cambridgeIpa = oxfordItem.ipa;
+    const cleanIpaNoDot = cambridgeIpa.replace(/\./g, '');
+    return {
+      oxford: {
+        uk: cleanIpaNoDot,
+        us: cleanIpaNoDot,
+        note: `Oxford 3000 (${oxfordItem.topicName}): ${oxfordItem.meaningVi}`,
+      },
+      cambridge: {
+        uk: cambridgeIpa,
+        us: cambridgeIpa,
+        note: `Cambridge Dictionary Standard (${oxfordItem.pos}): ${oxfordItem.meaningVi}`,
+      },
+      longman: {
+        uk: cleanIpaNoDot,
+        us: cleanIpaNoDot,
+        syllables: oxfordItem.word,
+        note: `LDOCE (${oxfordItem.pos})`,
+      },
+      syllables: oxfordItem.word,
+      audioUrlUk: `https://api.dictionaryapi.dev/media/pronunciations/en/${encodeURIComponent(cleanWord)}-uk.mp3`,
+      audioUrlUs: `https://api.dictionaryapi.dev/media/pronunciations/en/${encodeURIComponent(cleanWord)}-us.mp3`,
+    };
   }
 
   const camb = getCambridgeIPA(cleanWord, existingIPA);

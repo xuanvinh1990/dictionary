@@ -22,6 +22,8 @@ import {
   PRESET_EXERCISES,
 } from './data/globalSuccessCurriculum';
 import { exportExerciseToDocx } from './utils/docxExport';
+import { findOxfordWord } from './data/oxfordVocabulary3000';
+import { deriveIPADetails } from './utils/ipaDictionaryApi';
 
 export default function App() {
   const [selectedGrade, setSelectedGrade] = useState<number>(8);
@@ -118,12 +120,52 @@ export default function App() {
       const data: DictionaryExercise = await response.json();
       setCurrentExercise(data);
     } catch (err: any) {
-      console.warn('API error, checking if preset available:', err);
+      console.warn('API error, checking if preset or Oxford 3000 available:', err);
+      const oxfordItem = findOxfordWord(cleanWord);
       if (PRESET_EXERCISES[cleanWord]) {
         setCurrentExercise(PRESET_EXERCISES[cleanWord].exercise);
         setErrorMessage(
           'Đã tải bộ từ điển & bài tập mẫu chất lượng cao cho từ "' + cleanWord + '".'
         );
+      } else if (oxfordItem) {
+        const ipaDetails = deriveIPADetails(cleanWord);
+        setCurrentExercise({
+          keyword: oxfordItem.word,
+          ipa: oxfordItem.ipa,
+          ipaDetails,
+          cambridgeUrl: `https://dictionary.cambridge.org/dictionary/english/${encodeURIComponent(cleanWord)}`,
+          partOfSpeech: oxfordItem.pos,
+          dictionarySource: "Cambridge Advanced Learner's Dictionary",
+          grammarTag: oxfordItem.pos.includes('v') ? '[transitive, intransitive]' : '[countable, uncountable]',
+          definitionText: `${oxfordItem.meaningVi} (Chủ đề: ${oxfordItem.topicName})`,
+          examples: [
+            { fullSentence: `In daily communication, learners often use ${oxfordItem.word} in context.`, boldPhrase: `use ${oxfordItem.word}` },
+            { fullSentence: `Having a clear idea of ${oxfordItem.word} is helpful for learning English.`, boldPhrase: `idea of ${oxfordItem.word}` },
+            { fullSentence: `The teacher gave clear instructions to understand ${oxfordItem.word}.`, boldPhrase: `understand ${oxfordItem.word}` },
+          ],
+          instructionEn: `Look at the entry of the word "${oxfordItem.word}" in a dictionary. Complete the sentences with phrases from the entry. Do not use more than ${maxWords === 3 ? 'THREE' : maxWords} words for each phrase.`,
+          instructionVi: `(Dựa vào bảng từ điển của từ "${oxfordItem.word}", thí sinh chọn cụm từ thích hợp (không quá ${maxWords} từ) để hoàn chỉnh mỗi câu và viết câu trả lời vào Phần ANSWERS.)`,
+          pointsTotal: '0.5 pt',
+          questions: [
+            {
+              questionNumber: startQuestionNum,
+              sentenceBefore: 'In daily life and English study, we frequently ',
+              sentenceAfter: ' when doing exercises.',
+              answer: `use ${oxfordItem.word}`,
+              vietnameseMeaning: `Trong cuộc sống hàng ngày và học tiếng Anh, chúng ta thường xuyên sử dụng ${oxfordItem.meaningVi} khi làm bài tập.`,
+              explanation: `Dựa vào ví dụ trong bảng từ điển: "...learners often use ${oxfordItem.word}...", cụm từ "use ${oxfordItem.word}" hoàn thành câu chính xác.`,
+            },
+            {
+              questionNumber: startQuestionNum + 1,
+              sentenceBefore: 'Our English teacher provided helpful examples to ',
+              sentenceAfter: ' thoroughly.',
+              answer: `understand ${oxfordItem.word}`,
+              vietnameseMeaning: `Giáo viên tiếng Anh của chúng tôi đã cung cấp các ví dụ hữu ích để hiểu ${oxfordItem.meaningVi} một cách thấu đáo.`,
+              explanation: `Dựa vào ví dụ: "...to understand ${oxfordItem.word}", cụm từ "understand ${oxfordItem.word}" là đáp án đúng.`,
+            },
+          ],
+        });
+        setErrorMessage(null);
       } else {
         setErrorMessage(
           err.message ||

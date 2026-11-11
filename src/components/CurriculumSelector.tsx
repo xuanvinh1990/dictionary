@@ -86,74 +86,77 @@ export const CurriculumSelector: React.FC<CurriculumSelectorProps> = ({
       </div>
 
       <div className="space-y-5">
-        {/* Step 1: Chọn Khối lớp (Grade 6, 7, 8, 9) */}
-        <div>
-          <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-2">
-            1. Chọn Khối Lớp (Chương trình Tiếng Anh Global Success)
-          </label>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {[6, 7, 8, 9].map((grade) => (
-              <button
-                key={grade}
-                type="button"
-                onClick={() => {
+        {/* Step 1 & 2: Dropdown Khối Lớp & Chủ Đề Theo Unit */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Dropdown 1: Khối Lớp */}
+          <div>
+            <label
+              htmlFor="grade-select"
+              className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5"
+            >
+              1. Khối Lớp (Chương trình Global Success)
+            </label>
+            <div className="relative">
+              <select
+                id="grade-select"
+                value={selectedGrade}
+                onChange={(e) => {
+                  const grade = parseInt(e.target.value, 10);
                   onSelectGrade(grade);
-                  // Keep unit valid
                   onSelectUnit(1);
                 }}
-                className={`py-2.5 px-3 rounded-xl text-xs sm:text-sm font-semibold transition-all text-center flex flex-col items-center justify-center gap-0.5 border ${
-                  selectedGrade === grade
-                    ? 'bg-blue-700 text-white border-blue-700 shadow-sm'
-                    : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                }`}
+                className="w-full appearance-none bg-white border border-slate-300 rounded-xl px-4 py-2.5 pr-10 text-sm font-semibold text-slate-800 shadow-2xs focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600 cursor-pointer"
               >
-                <span>Lớp {grade}</span>
-                <span
-                  className={`text-[10px] font-normal ${
-                    selectedGrade === grade ? 'text-blue-100' : 'text-slate-500'
-                  }`}
-                >
-                  {grade === 9 ? 'Trọng điểm thi vào 10' : `THCS Lớp ${grade}`}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Step 2: Chọn Unit (Unit 1 đến Unit 12) */}
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <label className="text-xs font-semibold uppercase tracking-wider text-slate-600">
-              2. Chọn Chủ Đề Theo Unit (Unit 1 - Unit 12)
-            </label>
-            <span className="text-xs text-blue-700 font-medium">
-              Đang chọn: Unit {currentUnitData.unit} - {currentUnitData.title} ({currentUnitData.themeVi})
-            </span>
+                {GLOBAL_SUCCESS_CURRICULUM.map((g) => (
+                  <option key={g.grade} value={g.grade}>
+                    {g.gradeName} {g.grade === 9 ? '★' : ''}
+                  </option>
+                ))}
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-500">
+                <ChevronDown className="w-4 h-4" />
+              </div>
+            </div>
+            <p className="text-[11px] text-slate-500 mt-1">
+              {selectedGrade === 9
+                ? 'Trọng tâm cấu trúc đề thi tuyển sinh vào lớp 10 THPT'
+                : `Giáo trình Tiếng Anh ${selectedGrade} THCS (GDPT 2018)`}
+            </p>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 max-h-56 overflow-y-auto p-1 border border-slate-100 rounded-xl bg-slate-50/50">
-            {currentGradeData.units.map((u) => {
-              const isSelected = selectedUnit === u.unit;
-              return (
-                <button
-                  key={u.unit}
-                  type="button"
-                  onClick={() => onSelectUnit(u.unit)}
-                  className={`text-left p-2.5 rounded-lg transition-all border text-xs ${
-                    isSelected
-                      ? 'bg-white text-blue-900 border-blue-600 shadow-xs ring-2 ring-blue-600/20 font-semibold'
-                      : 'bg-white/80 text-slate-700 border-slate-200 hover:bg-white hover:border-slate-300'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-blue-700">Unit {u.unit}</span>
-                    {isSelected && <Check className="w-3.5 h-3.5 text-blue-700" />}
-                  </div>
-                  <div className="truncate font-medium text-slate-800">{u.title}</div>
-                  <div className="truncate text-[11px] text-slate-500">{u.themeVi}</div>
-                </button>
-              );
-            })}
+          {/* Dropdown 2: Chủ đề theo Unit (Unit 1 - Unit 12) */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label
+                htmlFor="unit-select"
+                className="block text-xs font-semibold uppercase tracking-wider text-slate-700"
+              >
+                2. Chủ Đề Theo Unit (Unit 1 - Unit 12)
+              </label>
+              <span className="text-[11px] font-bold text-blue-700">
+                Unit {currentUnitData.unit} / 12
+              </span>
+            </div>
+            <div className="relative">
+              <select
+                id="unit-select"
+                value={selectedUnit}
+                onChange={(e) => onSelectUnit(parseInt(e.target.value, 10))}
+                className="w-full appearance-none bg-white border border-slate-300 rounded-xl px-4 py-2.5 pr-10 text-sm font-semibold text-slate-800 shadow-2xs focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600 cursor-pointer"
+              >
+                {currentGradeData.units.map((u) => (
+                  <option key={u.unit} value={u.unit}>
+                    Unit {u.unit}: {u.title} — {u.themeVi}
+                  </option>
+                ))}
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-500">
+                <ChevronDown className="w-4 h-4" />
+              </div>
+            </div>
+            <p className="text-[11px] text-blue-800 font-medium mt-1 truncate">
+              Chủ đề hiện tại: <strong>{currentUnitData.title}</strong> ({currentUnitData.themeVi})
+            </p>
           </div>
         </div>
 

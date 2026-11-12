@@ -50,6 +50,7 @@ interface CurriculumSelectorProps {
   onGenerate: () => void;
   isGenerating: boolean;
   onLoadSample: () => void;
+  onSelectKeywordDirect?: (word: string, optGrade?: number, optUnit?: number) => void;
 }
 
 export const CurriculumSelector: React.FC<CurriculumSelectorProps> = ({
@@ -70,6 +71,7 @@ export const CurriculumSelector: React.FC<CurriculumSelectorProps> = ({
   onGenerate,
   isGenerating,
   onLoadSample,
+  onSelectKeywordDirect,
 }) => {
   // Mode selection: 'global-success' or 'oxford-3000'
   const [sourceMode, setSourceMode] = useState<'global-success' | 'oxford-3000'>('global-success');
@@ -206,7 +208,6 @@ export const CurriculumSelector: React.FC<CurriculumSelectorProps> = ({
                   onChange={(e) => {
                     const grade = parseInt(e.target.value, 10);
                     onSelectGrade(grade);
-                    onSelectUnit(1);
                   }}
                   className="w-full appearance-none bg-white border border-slate-300 rounded-xl px-4 py-2.5 pr-10 text-sm font-semibold text-slate-800 shadow-2xs focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600 cursor-pointer"
                 >
@@ -220,11 +221,15 @@ export const CurriculumSelector: React.FC<CurriculumSelectorProps> = ({
                   <ChevronDown className="w-4 h-4" />
                 </div>
               </div>
-              <p className="text-[11px] text-slate-500 mt-1">
-                {selectedGrade === 9
-                  ? 'Trọng tâm cấu trúc đề thi tuyển sinh vào lớp 10 THPT'
-                  : `Giáo trình Tiếng Anh ${selectedGrade} THCS (GDPT 2018)`}
-              </p>
+              <div className="mt-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-blue-900 bg-blue-50/90 px-2.5 py-1 rounded-lg border border-blue-200/70">
+                <Sparkles className="w-3.5 h-3.5 text-blue-700 shrink-0" />
+                <span>
+                  {selectedGrade === 6 && "Độ khó A1: Câu đơn ngắn (Hiện tại đơn, đồ dùng trường lớp)"}
+                  {selectedGrade === 7 && "Độ khó A2-: Câu ghép liên từ (Quá khứ đơn, vì sao, cộng đồng)"}
+                  {selectedGrade === 8 && "Độ khó A2+: Câu phức (Although/When, điều kiện 1, phong cách sống)"}
+                  {selectedGrade === 9 && "Độ khó B1: Chuẩn Đề Tuyển sinh Lớp 10 THPT (Mệnh đề quan hệ, phân hóa cao)"}
+                </span>
+              </div>
             </div>
 
             {/* Dropdown 2: Chủ đề theo Unit (Unit 1 - Unit 12) */}
@@ -291,7 +296,12 @@ export const CurriculumSelector: React.FC<CurriculumSelectorProps> = ({
                     setSearchFilterInTopic('');
                     const topic = OXFORD_3000_TOPICS.find((t) => t.id === id);
                     if (topic && topic.words.length > 0) {
-                      onChangeKeyword(topic.words[0].word);
+                      const firstW = topic.words[0].word;
+                      if (onSelectKeywordDirect) {
+                        onSelectKeywordDirect(firstW, selectedGrade, selectedUnit);
+                      } else {
+                        onChangeKeyword(firstW);
+                      }
                     }
                   }}
                   className="w-full appearance-none bg-white border border-slate-300 rounded-xl px-4 py-2.5 pr-10 text-sm font-semibold text-slate-800 shadow-2xs focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:border-emerald-600 cursor-pointer"
@@ -323,7 +333,7 @@ export const CurriculumSelector: React.FC<CurriculumSelectorProps> = ({
             {/* Word Chips in Current Oxford Topic */}
             <div>
               <div className="text-[11px] font-semibold text-slate-500 mb-2">
-                Bấm vào một từ vựng để nạp từ khóa & phiên âm Cambridge tương ứng:
+                Bấm vào một từ vựng để tạo ngay bài tập & nạp phiên âm Cambridge:
               </div>
               <div className="max-h-48 overflow-y-auto pr-1 flex flex-wrap gap-1.5 custom-scrollbar">
                 {filteredTopicWords.map((item) => {
@@ -332,11 +342,17 @@ export const CurriculumSelector: React.FC<CurriculumSelectorProps> = ({
                     <button
                       key={item.word}
                       type="button"
-                      onClick={() => onChangeKeyword(item.word)}
+                      onClick={() => {
+                        if (onSelectKeywordDirect) {
+                          onSelectKeywordDirect(item.word, selectedGrade, selectedUnit);
+                        } else {
+                          onChangeKeyword(item.word);
+                        }
+                      }}
                       className={`text-xs px-2.5 py-1.5 rounded-lg border transition-all text-left flex items-center gap-1.5 ${
                         isSelected
                           ? 'bg-emerald-700 text-white border-emerald-700 shadow-xs font-bold'
-                          : 'bg-white text-slate-700 border-slate-200 hover:border-emerald-400 hover:bg-emerald-50/50'
+                          : 'bg-white text-slate-700 border-slate-200 hover:border-emerald-400 hover:bg-emerald-50/50 cursor-pointer'
                       }`}
                       title={`${item.word} (${item.pos}) [${item.ipa}]: ${item.meaningVi}`}
                     >
@@ -427,10 +443,14 @@ export const CurriculumSelector: React.FC<CurriculumSelectorProps> = ({
                     key={`${item.word}-${idx}`}
                     type="button"
                     onClick={() => {
-                      onChangeKeyword(item.word);
                       setIsSearchFocused(false);
+                      if (onSelectKeywordDirect) {
+                        onSelectKeywordDirect(item.word, item.grade, item.unit);
+                      } else {
+                        onChangeKeyword(item.word);
+                      }
                     }}
-                    className="w-full text-left px-3.5 py-2 hover:bg-blue-50/80 transition-colors flex items-center justify-between gap-2"
+                    className="w-full text-left px-3.5 py-2 hover:bg-blue-50/80 transition-colors flex items-center justify-between gap-2 cursor-pointer"
                   >
                     <div className="flex items-center gap-2">
                       <span className="font-bold text-slate-900">{item.word}</span>
@@ -544,11 +564,17 @@ export const CurriculumSelector: React.FC<CurriculumSelectorProps> = ({
                     <button
                       key={item.word}
                       type="button"
-                      onClick={() => onChangeKeyword(item.word)}
+                      onClick={() => {
+                        if (onSelectKeywordDirect) {
+                          onSelectKeywordDirect(item.word, selectedGrade, currentUnitData.unit);
+                        } else {
+                          onChangeKeyword(item.word);
+                        }
+                      }}
                       className={`text-xs px-2.5 py-1.5 rounded-lg border transition-all text-left flex items-center gap-1.5 ${
                         isSelected
                           ? 'bg-blue-700 text-white border-blue-700 shadow-xs font-bold'
-                          : 'bg-white text-slate-700 border-slate-200 hover:border-blue-400 hover:bg-blue-50/50'
+                          : 'bg-white text-slate-700 border-slate-200 hover:border-blue-400 hover:bg-blue-50/50 cursor-pointer'
                       }`}
                       title={`${item.word} (${item.pos}) [${item.ipa || ''}]: ${item.meaningVi}`}
                     >

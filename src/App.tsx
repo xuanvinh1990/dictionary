@@ -24,6 +24,7 @@ import {
 import { exportExerciseToDocx } from './utils/docxExport';
 import { findOxfordWord } from './data/oxfordVocabulary3000';
 import { deriveIPADetails } from './utils/ipaDictionaryApi';
+import { generateExerciseForKeyword } from './utils/exerciseGenerator';
 
 export default function App() {
   const [selectedGrade, setSelectedGrade] = useState<number>(8);
@@ -52,25 +53,118 @@ export default function App() {
     currentGradeData.units.find((u) => u.unit === selectedUnit) ||
     currentGradeData.units[5];
 
+  // Core generator: updates questions INSTANTLY for the chosen keyword and grade!
+  const executeGenerate = async (
+    targetKeyword: string,
+    targetGrade: number,
+    targetUnit: number,
+    targetUnitTitle?: string
+  ) => {
+    const cleanWord = targetKeyword.trim().toLowerCase();
+    if (!cleanWord) return;
+
+    // 1. Instant 0ms update: generate pristine Cambridge dictionary entry and questions
+    const gradeObj =
+      GLOBAL_SUCCESS_CURRICULUM.find((g) => g.grade === targetGrade) ||
+      GLOBAL_SUCCESS_CURRICULUM[0];
+    const unitObj =
+      gradeObj.units.find((u) => u.unit === targetUnit) || gradeObj.units[0];
+    const resolvedTitle = targetUnitTitle || unitObj.title;
+
+    const instantExercise = generateExerciseForKeyword(
+      cleanWord,
+      targetGrade,
+      targetUnit,
+      resolvedTitle,
+      questionCount,
+      startQuestionNum,
+      maxWords
+    );
+    setCurrentExercise(instantExercise);
+    setErrorMessage(null);
+
+    // 2. Asynchronously request backend for live Cambridge Online audio & enrichment
+    setIsGenerating(true);
+    try {
+      const response = await fetch('/api/generate-exercise', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          keyword: cleanWord,
+          grade: targetGrade,
+          unit: targetUnit,
+          unitTitle: resolvedTitle,
+          dictionarySource,
+          questionCount,
+          startQuestionNum,
+          maxWords,
+        }),
+      });
+
+      if (response.ok) {
+        const enrichedData: DictionaryExercise = await response.json();
+        setCurrentExercise(enrichedData);
+      }
+    } catch {
+      // Offline fallback: instant exercise is already active
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   // Handle Load Preset / Sample Image
   const handleLoadSample = () => {
-    setSelectedGrade(8);
+    setSelectedGrade(9);
     setSelectedUnit(6);
     setKeyword('habit');
     setQuestionCount(2);
     setStartQuestionNum(35);
     setMaxWords(3);
-    setCurrentExercise(SAMPLE_HABIT_EXERCISE);
-    setErrorMessage(null);
+    executeGenerate('habit', 9, 6, 'Lifestyles');
   };
 
-  // Handle Select Unit & auto-pick first keyword suggestion if empty
+  // Handle Select Grade: updates grade, unit 1, picks 1st word, and REGENERATES IMMEDIATELY!
+  const handleSelectGrade = (newGrade: number) => {
+    setSelectedGrade(newGrade);
+    const gradeObj =
+      GLOBAL_SUCCESS_CURRICULUM.find((g) => g.grade === newGrade) ||
+      GLOBAL_SUCCESS_CURRICULUM[0];
+    const unit1 = gradeObj.units[0];
+    setSelectedUnit(unit1.unit);
+    const newKw = unit1.suggestedKeywords[0]?.word || 'habit';
+    setKeyword(newKw);
+    executeGenerate(newKw, newGrade, unit1.unit, unit1.title);
+  };
+
+  // Handle Select Unit: updates unit, picks 1st word, and REGENERATES IMMEDIATELY!
   const handleSelectUnit = (unitNum: number) => {
     setSelectedUnit(unitNum);
-    const unitObj = currentGradeData.units.find((u) => u.unit === unitNum);
-    if (unitObj && unitObj.suggestedKeywords.length > 0) {
-      setKeyword(unitObj.suggestedKeywords[0].word);
+    const gradeObj =
+      GLOBAL_SUCCESS_CURRICULUM.find((g) => g.grade === selectedGrade) ||
+      GLOBAL_SUCCESS_CURRICULUM[0];
+    const unitObj =
+      gradeObj.units.find((u) => u.unit === unitNum) || gradeObj.units[0];
+    const newKw = unitObj.suggestedKeywords[0]?.word || keyword;
+    setKeyword(newKw);
+    executeGenerate(newKw, selectedGrade, unitNum, unitObj.title);
+  };
+
+  // Handle Direct Keyword Click (from chips, Oxford topics, or autocomplete)
+  const handleSelectKeywordDirect = (
+    word: string,
+    optGrade?: number,
+    optUnit?: number
+  ) => {
+    const targetGrade = optGrade || selectedGrade;
+    const targetUnit = optUnit || selectedUnit;
+    if (optGrade && optGrade !== selectedGrade) {
+      setSelectedGrade(optGrade);
     }
+    if (optUnit && optUnit !== selectedUnit) {
+      setSelectedUnit(optUnit);
+    }
+    setKeyword(word);
+    executeGenerate(word, targetGrade, targetUnit);
   };
 
   // Handle Select Preset quick button
@@ -80,101 +174,13 @@ export default function App() {
       setSelectedGrade(item.grade);
       setSelectedUnit(item.unit);
       setKeyword(item.exercise.keyword);
-      setCurrentExercise(item.exercise);
-      setErrorMessage(null);
+      executeGenerate(item.exercise.keyword, item.grade, item.unit);
     }
   };
 
-  // Generate Exercise via Gemini API
-  const handleGenerate = async () => {
-    if (!keyword.trim()) return;
-
-    const cleanWord = keyword.trim().toLowerCase();
-    setIsGenerating(true);
-    setErrorMessage(null);
-
-    // If matches built-in preset, load instantly if offline or as baseline
-    try {
-      const response = await fetch('/api/generate-exercise', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          keyword: cleanWord,
-          grade: selectedGrade,
-          unit: selectedUnit,
-          unitTitle: currentUnitData.title,
-          dictionarySource,
-          questionCount,
-          startQuestionNum,
-          maxWords,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(
-          errorData.error || `Lỗi máy chủ (${response.status}). Vui lòng thử lại.`
-        );
-      }
-
-      const data: DictionaryExercise = await response.json();
-      setCurrentExercise(data);
-    } catch (err: any) {
-      console.warn('API error, checking if preset or Oxford 3000 available:', err);
-      const oxfordItem = findOxfordWord(cleanWord);
-      if (PRESET_EXERCISES[cleanWord]) {
-        setCurrentExercise(PRESET_EXERCISES[cleanWord].exercise);
-        setErrorMessage(
-          'Đã tải bộ từ điển & bài tập mẫu chất lượng cao cho từ "' + cleanWord + '".'
-        );
-      } else if (oxfordItem) {
-        const ipaDetails = deriveIPADetails(cleanWord);
-        setCurrentExercise({
-          keyword: oxfordItem.word,
-          ipa: oxfordItem.ipa,
-          ipaDetails,
-          cambridgeUrl: `https://dictionary.cambridge.org/dictionary/english/${encodeURIComponent(cleanWord)}`,
-          partOfSpeech: oxfordItem.pos,
-          dictionarySource: "Cambridge Advanced Learner's Dictionary",
-          grammarTag: oxfordItem.pos.includes('v') ? '[transitive, intransitive]' : '[countable, uncountable]',
-          definitionText: `${oxfordItem.meaningVi} (Chủ đề: ${oxfordItem.topicName})`,
-          examples: [
-            { fullSentence: `In daily communication, learners often use ${oxfordItem.word} in context.`, boldPhrase: `use ${oxfordItem.word}` },
-            { fullSentence: `Having a clear idea of ${oxfordItem.word} is helpful for learning English.`, boldPhrase: `idea of ${oxfordItem.word}` },
-            { fullSentence: `The teacher gave clear instructions to understand ${oxfordItem.word}.`, boldPhrase: `understand ${oxfordItem.word}` },
-          ],
-          instructionEn: `Look at the entry of the word "${oxfordItem.word}" in a dictionary. Complete the sentences with phrases from the entry. Do not use more than ${maxWords === 3 ? 'THREE' : maxWords} words for each phrase.`,
-          instructionVi: `(Dựa vào bảng từ điển của từ "${oxfordItem.word}", thí sinh chọn cụm từ thích hợp (không quá ${maxWords} từ) để hoàn chỉnh mỗi câu và viết câu trả lời vào Phần ANSWERS.)`,
-          pointsTotal: '0.5 pt',
-          questions: [
-            {
-              questionNumber: startQuestionNum,
-              sentenceBefore: 'In daily life and English study, we frequently ',
-              sentenceAfter: ' when doing exercises.',
-              answer: `use ${oxfordItem.word}`,
-              vietnameseMeaning: `Trong cuộc sống hàng ngày và học tiếng Anh, chúng ta thường xuyên sử dụng ${oxfordItem.meaningVi} khi làm bài tập.`,
-              explanation: `Dựa vào ví dụ trong bảng từ điển: "...learners often use ${oxfordItem.word}...", cụm từ "use ${oxfordItem.word}" hoàn thành câu chính xác.`,
-            },
-            {
-              questionNumber: startQuestionNum + 1,
-              sentenceBefore: 'Our English teacher provided helpful examples to ',
-              sentenceAfter: ' thoroughly.',
-              answer: `understand ${oxfordItem.word}`,
-              vietnameseMeaning: `Giáo viên tiếng Anh của chúng tôi đã cung cấp các ví dụ hữu ích để hiểu ${oxfordItem.meaningVi} một cách thấu đáo.`,
-              explanation: `Dựa vào ví dụ: "...to understand ${oxfordItem.word}", cụm từ "understand ${oxfordItem.word}" là đáp án đúng.`,
-            },
-          ],
-        });
-        setErrorMessage(null);
-      } else {
-        setErrorMessage(
-          err.message ||
-            'Không thể kết nối đến máy chủ AI. Vui lòng kiểm tra lại kết nối mạng hoặc thử lại với từ vựng khác.'
-        );
-      }
-    } finally {
-      setIsGenerating(false);
-    }
+  // Generate Exercise on manual button press or search submit
+  const handleGenerate = () => {
+    executeGenerate(keyword, selectedGrade, selectedUnit, currentUnitData.title);
   };
 
   // Handle Word .docx Export
@@ -289,11 +295,12 @@ export default function App() {
         <div id="curriculum-section">
           <CurriculumSelector
             selectedGrade={selectedGrade}
-            onSelectGrade={setSelectedGrade}
+            onSelectGrade={handleSelectGrade}
             selectedUnit={selectedUnit}
             onSelectUnit={handleSelectUnit}
             keyword={keyword}
             onChangeKeyword={setKeyword}
+            onSelectKeywordDirect={handleSelectKeywordDirect}
             dictionarySource={dictionarySource}
             onChangeDictionarySource={setDictionarySource}
             questionCount={questionCount}

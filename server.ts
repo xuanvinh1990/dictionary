@@ -10,7 +10,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+// AI Studio dev server runs on port 3000
+const PORT = 3000;
 
 app.use(express.json());
 
@@ -38,6 +39,7 @@ interface GenerateRequest {
 import { deriveIPADetails } from './src/utils/ipaDictionaryApi';
 import { GLOBAL_SUCCESS_CURRICULUM } from './src/data/globalSuccessCurriculum';
 import { findOxfordWord } from './src/data/oxfordVocabulary3000';
+import { generateExerciseForKeyword } from './src/utils/exerciseGenerator';
 
 interface CambridgeOnlineResult {
   keyword: string;
@@ -235,12 +237,37 @@ LƯU Ý QUAN TRỌNG: Hãy sử dụng CHÍNH XÁC phiên âm IPA của Cambridg
 `;
     }
 
+    const gradeDifficultyGuidelines: Record<number, string> = {
+      6: `YÊU CẦU ĐỘ KHÓ DÀNH CHO KHỐI LỚP 6 (Trình độ A1 - Cơ bản):
+- Ngữ pháp: Câu đơn ngắn (dưới 10 từ), thì Hiện tại đơn (is/am/are, V-s/es), Hiện tại tiếp diễn (is/are + V-ing), động từ khiếm khuyết đơn giản (can, should, must), cấu trúc sở thích (like/love/enjoy + V-ing, There is/are).
+- Ngữ cảnh: Đời sống học đường, lớp học mới, bạn bè, đồ dùng học tập, gia đình, nhà ở, hoạt động hàng ngày.
+- Chỗ trống: Điền cụm từ ngắn (1-2 từ, hoặc 3 từ rất dễ), có từ tín hiệu gợi ý rõ ràng ngay trước/sau chỗ trống.
+- Lời giải thích: Đơn giản, dễ hiểu, chỉ rõ từ loại và vị trí trong câu cho học sinh lớp 6.`,
+      7: `YÊU CẦU ĐỘ KHÓ DÀNH CHO KHỐI LỚP 7 (Trình độ A2- - Mở rộng câu ghép):
+- Ngữ pháp: Câu ghép kết hợp liên từ (and, but, so, because), thì Quá khứ đơn (was/were, V-ed), Tương lai đơn (will), so sánh hơn/kém của tính từ, câu mệnh lệnh.
+- Ngữ cảnh: Hoạt động cộng đồng, thiện nguyện, sở thích lành mạnh, âm nhạc nghệ thuật, thói quen ăn uống, sức khỏe học đường, an toàn giao thông.
+- Chỗ trống: Cụm từ 2-3 từ làm bổ ngữ hoặc chủ ngữ trong câu ghép.
+- Lời giải thích: Phân tích liên từ và cách nối 2 mệnh đề trong câu ghép.`,
+      8: `YÊU CẦU ĐỘ KHÓ DÀNH CHO KHỐI LỚP 8 (Trình độ A2+ - Nâng cao cơ sở / Câu phức):
+- Ngữ pháp: Câu phức có mệnh đề trạng ngữ (although, even though, while, when), Câu điều kiện Loại 1, Câu bị động cơ bản, động từ chỉ sự yêu thích (fancy, detest, adore, prefer) + V-ing.
+- Ngữ cảnh: Phong cách sống (lifestyles), bảo tồn văn hóa và nghề truyền thống của các dân tộc, thảm họa thiên nhiên, mua sắm và công nghệ.
+- Chỗ trống: Cụm collocations tự nhiên 2-3 từ đòi hỏi học sinh nhận biết sự kết hợp từ chặt chẽ.
+- Lời giải thích: Phân tích mệnh đề phụ và cấu trúc câu phức.`,
+      9: `YÊU CẦU ĐỘ KHÓ DÀNH CHO KHỐI LỚP 9 (Trình độ B1 - TRỌNG TÂM LUYỆN THI TUYỂN SINH VÀO LỚP 10 THPT):
+- Ngữ pháp: Chuẩn cấu trúc đề thi Tuyển sinh vào Lớp 10 THPT chính thức (như đề thi Sở GD&ĐT TP.HCM / Hà Nội). Câu phức đa mệnh đề, Mệnh đề quan hệ (who, which, that, where, whose), Câu điều kiện Loại 2, Câu tường thuật, Câu bị động nâng cao, Cụm phân từ (participle clauses), Phrasal verbs và collocations nâng cao.
+- Ngữ cảnh: Đề tài học thuật, di sản văn hóa, phát triển cộng đồng bền vững, định hướng nghề nghiệp tương lai, tiếng Anh toàn cầu.
+- Chỗ trống: Collocation học thuật 2-3 từ mang tính phân hóa cao, đòi hỏi học sinh phân tích ngữ cảnh sâu sắc để không bị bẫy ngữ pháp.
+- Lời giải thích: Chuyên sâu sư phạm, phân tích cấu trúc đề thi tuyển sinh lớp 10, chỉ ra điểm mấu chốt để đạt trọn vẹn điểm.`,
+    };
+
     const prompt = `
 Bạn là chuyên gia khảo thí và giáo viên Tiếng Anh nhiều kinh nghiệm chuyên luyện thi tuyển sinh vào lớp 10 và giảng dạy giáo trình Global Success (Bộ GD&ĐT) khối ${grade}.
 Nhiệm vụ: Tạo một câu hỏi bài tập tra cứu từ điển dạng "Dictionary Entry Sentence Completion" (như đề thi tuyển sinh lớp 10 TP.HCM / đề kiểm tra định kỳ Global Success) cho từ khóa: "${cleanKeyword}".
 Trang nguồn tra cứu mục từ điển: "https://dictionary.cambridge.org/"
 Chủ đề liên quan: Tiếng Anh ${grade} - Unit ${unit}: ${unitTitle}.
 ${cambridgeContext}
+
+${gradeDifficultyGuidelines[grade] || gradeDifficultyGuidelines[8]}
 
 YÊU CẦU ĐẶC BIỆT THEO CHUẨN ĐỀ THI:
 1. Tra cứu định nghĩa và phiên âm chuẩn từ điển Cambridge (Cambridge Advanced Learner's Dictionary - CALD - https://dictionary.cambridge.org/):
@@ -253,10 +280,11 @@ YÊU CẦU ĐẶC BIỆT THEO CHUẨN ĐỀ THI:
 
 2. Tạo đúng ${questionCount} câu hỏi bài tập điền khuyết:
    - Đánh số thứ tự bắt đầu từ câu số ${startQuestionNum} (ví dụ: ${startQuestionNum}, ${startQuestionNum + 1}).
-   - Mỗi câu bài tập là một ngữ cảnh giao tiếp / đời sống tự nhiên phù hợp với trình độ học sinh lớp ${grade} và chủ đề Unit ${unit} (${unitTitle}).
-   - Chỗ trống phải được điền CHÍNH XÁC bằng một cụm từ (phrases) xuất hiện trong các câu ví dụ của bảng từ điển trên.
+   - Mỗi câu bài tập PHẢI tuân thủ chính xác mức độ khó và cấu trúc ngữ pháp của Khối lớp ${grade} đã nêu ở trên.
+   - CHÍNH XÁC VỀ NGỮ NGHĨA (SEMANTICALLY): Câu hỏi phải đúng ngữ cảnh thực tế của từ "${cleanKeyword}" (ví dụ: uniform là trang phục trường học/lễ chào cờ, artisan là nghệ nhân làm đồ gốm/thủ công, habit là thói quen ăn uống/sinh hoạt, craft là nghề truyền thống, recycle là rác thải/bảo vệ môi trường). Tuyệt đối không tạo câu vô nghĩa.
+   - CHÍNH XÁC VỀ NGỮ PHÁP (GRAMMATICALLY): Khi điền đáp án vào chỗ trống (sentenceBefore + answer + sentenceAfter), câu hoàn chỉnh phải là câu tiếng Anh chuẩn 100%. Vị trí sau "must/should/to" phải là cụm động từ nguyên mẫu; vị trí làm chủ ngữ hoặc sau tính từ phải là cụm danh từ; vị trí sau to be/linking verbs có thể là cụm tính từ.
+   - Chỗ trống phải được điền CHÍNH XÁC bằng một cụm từ (phrases) xuất hiện in đậm (boldPhrase) trong các câu ví dụ của bảng từ điển trên.
    - Đáp án không được vượt quá ${maxWords} từ ("Do not use more than ${maxWords === 3 ? 'THREE' : maxWords} words for each phrase").
-   - Các câu hỏi phải có ngữ cảnh rõ ràng, chỉ có một đáp án duy nhất đúng nhất và hợp nghĩa ngữ pháp.
    - Cung cấp dịch nghĩa tiếng Việt chi tiết và lời giải thích ngắn gọn, sư phạm cho giáo viên và học sinh.
 `;
 
@@ -418,279 +446,57 @@ function createCurriculumFallback(
   maxWords: number,
   cambridgeOnline?: CambridgeOnlineResult | null
 ) {
-  // Common vocabulary database for Global Success
-  const DICT_BANK: Record<string, {
-    ipa: string;
-    pos: string;
-    grammarTag: string;
-    definition: string;
-    examples: { fullSentence: string; boldPhrase: string }[];
-    questions: { before: string; after: string; answer: string; meaning: string; explanation: string }[];
-  }> = {
-    habit: {
-      ipa: "/ˈhæb.ɪt/",
-      pos: 'noun',
-      grammarTag: '[countable]',
-      definition: 'a thing that you do often and almost without thinking, especially something that is hard to stop doing',
-      examples: [
-        { fullSentence: 'You need to change your eating habits.', boldPhrase: 'eating habits' },
-        { fullSentence: 'Most of us have some undesirable habits.', boldPhrase: 'have some undesirable habits' },
-        { fullSentence: 'The strategy is helping children develop the habit of reading for fun.', boldPhrase: 'develop the habit' },
-        { fullSentence: "It's all right to borrow money occasionally, but don't let it become a habit.", boldPhrase: 'let it become a habit' },
-        { fullSentence: "It's not easy for children to break the habit of using digital devices while having meals.", boldPhrase: 'break the habit' },
-      ],
-      questions: [
-        {
-          before: "I'm trying to ",
-          after: " of staying up too late.",
-          answer: "break the habit",
-          meaning: "Tôi đang cố gắng từ bỏ thói quen thức quá khuya.",
-          explanation: 'Dựa vào câu ví dụ từ điển: "...break the habit of using digital devices...", cụm từ "break the habit" mang nghĩa là từ bỏ thói quen.',
-        },
-        {
-          before: "Your ",
-          after: " play an important role in body weight control.",
-          answer: "eating habits",
-          meaning: "Thói quen ăn uống của bạn đóng một vai trò quan trọng trong việc kiểm soát trọng lượng cơ thể.",
-          explanation: 'Dựa vào ví dụ: "You need to change your eating habits.", cụm danh từ "eating habits" (thói quen ăn uống) đứng đầu câu làm chủ ngữ.',
-        },
-        {
-          before: "Parents should encourage their kids to ",
-          after: " of exercising every morning.",
-          answer: "develop the habit",
-          meaning: "Bố mẹ nên khuyến khích con cái hình thành thói quen tập thể dục mỗi sáng.",
-          explanation: 'Dựa vào ví dụ: "...develop the habit of reading for fun", cụm "develop the habit" nghĩa là hình thành/xây dựng thói quen.',
-        },
-      ],
-    },
-    craft: {
-      ipa: "/krɑːft/",
-      pos: 'noun',
-      grammarTag: '[countable, uncountable]',
-      definition: 'an activity involving a special skill at making things with your hands, or the objects produced by this skill',
-      examples: [
-        { fullSentence: 'Many artisans in Bat Trang still practise their traditional craft.', boldPhrase: 'traditional craft' },
-        { fullSentence: 'It takes several years of training to master the craft of woodcarving.', boldPhrase: 'master the craft' },
-        { fullSentence: 'The village is famous for its handicraft products sold across the country.', boldPhrase: 'handicraft products' },
-        { fullSentence: 'Local young people are learning the craft from elderly masters.', boldPhrase: 'learning the craft' },
-      ],
-      questions: [
-        {
-          before: "Young apprentices need great dedication to ",
-          after: " of making conical hats.",
-          answer: "master the craft",
-          meaning: "Các thợ học việc trẻ tuổi cần sự cống hiến lớn để làm chủ tay nghề làm nón lá.",
-          explanation: 'Dựa vào ví dụ: "...to master the craft of woodcarving", ta dùng cụm "master the craft" (tinh thông nghề).',
-        },
-        {
-          before: "Pottery making is a ",
-          after: " that has been preserved for generations in this village.",
-          answer: "traditional craft",
-          meaning: "Làm gốm là một nghề thủ công truyền thống đã được gìn giữ qua nhiều thế hệ ở ngôi làng này.",
-          explanation: 'Dựa vào ví dụ: "...practise their traditional craft", cụm danh từ "traditional craft" (nghề truyền thống) rất chính xác.',
-        },
-      ],
-    },
-    community: {
-      ipa: "/kəˈmjuː.nə.ti/",
-      pos: 'noun',
-      grammarTag: '[countable]',
-      definition: 'the people living in one particular area or people who are considered as a unit because of their common interests, social group, or nationality',
-      examples: [
-        { fullSentence: 'Students are actively involved in the local community project.', boldPhrase: 'local community' },
-        { fullSentence: 'Volunteering offers valuable opportunities to do community service.', boldPhrase: 'community service' },
-        { fullSentence: 'He is a highly respected member of the community.', boldPhrase: 'member of the community' },
-        { fullSentence: 'The charity works to build a stronger community for disadvantaged people.', boldPhrase: 'stronger community' },
-      ],
-      questions: [
-        {
-          before: "Our school encourages teenagers to take part in ",
-          after: " during the summer vacation.",
-          answer: "community service",
-          meaning: "Trường chúng tôi khuyến khích các bạn thanh thiếu niên tham gia vào hoạt động công ích cộng đồng trong kỳ nghỉ hè.",
-          explanation: 'Dựa vào câu ví dụ từ điển: "...valuable opportunities to do community service", cụm danh từ "community service" mang nghĩa hoạt động phục vụ cộng đồng.',
-        },
-        {
-          before: "We organized a clean-up campaign to help improve our ",
-          after: " and protect the environment.",
-          answer: "local community",
-          meaning: "Chúng tôi đã tổ chức một chiến dịch dọn vệ sinh để giúp cải thiện cộng đồng địa phương của mình và bảo vệ môi trường.",
-          explanation: 'Dựa vào ví dụ: "...involved in the local community project", cụm "local community" (cộng đồng địa phương) hoàn toàn phù hợp.',
-        },
-      ],
-    },
-    tradition: {
-      ipa: "/trəˈdɪʃ.ən/",
-      pos: 'noun',
-      grammarTag: '[countable, uncountable]',
-      definition: 'a belief, principle, or way of acting that people in a particular society or group have continued to follow for a long time',
-      examples: [
-        { fullSentence: 'Having dinner together on New Year’s Eve is a long-standing family tradition.', boldPhrase: 'family tradition' },
-        { fullSentence: 'The villagers decided to break with tradition and celebrate in a modern way.', boldPhrase: 'break with tradition' },
-        { fullSentence: 'These unique folk songs have been handed down by tradition.', boldPhrase: 'handed down by tradition' },
-        { fullSentence: 'It is important for youngsters to keep the tradition alive.', boldPhrase: 'keep the tradition alive' },
-      ],
-      questions: [
-        {
-          before: "Wrapping Chung cakes before Tet is a beloved ",
-          after: " in many Vietnamese households.",
-          answer: "family tradition",
-          meaning: "Gói bánh chưng trước Tết là một truyền thống gia đình được yêu thích trong nhiều gia đình Việt Nam.",
-          explanation: 'Dựa vào câu ví dụ từ điển: "...a long-standing family tradition", cụm từ "family tradition" (truyền thống gia đình) chính xác.',
-        },
-        {
-          before: "Local authorities are organizing cultural workshops to ",
-          after: " for future generations.",
-          answer: "keep the tradition alive",
-          meaning: "Chính quyền địa phương đang tổ chức các buổi hội thảo văn hóa để giữ cho truyền thống luôn sống mãi cho các thế hệ tương lai.",
-          explanation: 'Dựa vào câu ví dụ: "...to keep the tradition alive" (gìn giữ truyền thống tiếp tục tồn tại).',
-        },
-      ],
-    },
-    recycle: {
-      ipa: "/ˌriːˈsaɪ.kəl/",
-      pos: 'verb',
-      grammarTag: '[transitive]',
-      definition: 'to put used objects or materials through a special process so that they can be used again',
-      examples: [
-        { fullSentence: 'Students are encouraged to recycle plastic bottles at school.', boldPhrase: 'recycle plastic bottles' },
-        { fullSentence: 'It is very easy to recycle paper and cardboard packaging.', boldPhrase: 'easy to recycle' },
-        { fullSentence: 'Our neighbourhood has launched a campaign to recycle household waste.', boldPhrase: 'recycle household waste' },
-        { fullSentence: 'We need to recycle materials to reduce environmental pollution.', boldPhrase: 'recycle materials' },
-      ],
-      questions: [
-        {
-          before: "Most glass jars and metal cans are ",
-          after: " if you sort them properly.",
-          answer: "easy to recycle",
-          meaning: "Hầu hết các lọ thủy tinh và hộp kim loại đều rất dễ tái chế nếu bạn phân loại chúng đúng cách.",
-          explanation: 'Dựa vào ví dụ trong từ điển: "It is very easy to recycle paper...", ta có cụm tính từ "easy to recycle".',
-        },
-        {
-          before: "Our school launched a weekend project to collect and ",
-          after: " into lovely pen holders.",
-          answer: "recycle plastic bottles",
-          meaning: "Trường chúng tôi đã phát động một dự án cuối tuần để thu gom và tái chế chai nhựa thành những chiếc ống cắm bút đáng yêu.",
-          explanation: 'Dựa vào ví dụ: "recycle plastic bottles" (tái chế các chai nhựa).',
-        },
-      ],
-    },
-  };
+  // Delegate to generateExerciseForKeyword for 100% semantic and grammatical precision
+  const exercise = generateExerciseForKeyword(
+    word,
+    grade,
+    unit,
+    unitTitle,
+    questionCount,
+    startNum,
+    maxWords
+  );
 
-  // Find match in curriculum keywords if available
-  let curriculumMatch: { word: string; pos: string; ipa?: string; meaningVi: string; keyCollocations: string[] } | null = null;
-  for (const g of GLOBAL_SUCCESS_CURRICULUM) {
-    for (const u of g.units) {
-      const found = u.suggestedKeywords.find((k) => k.word.toLowerCase() === word);
-      if (found) {
-        curriculumMatch = found;
-        break;
-      }
-    }
-    if (curriculumMatch) break;
-  }
-
-  // Find match in Oxford 3000 vocabulary (PDF)
-  const oxfordMatch = findOxfordWord(word);
-
-  const coll1 = curriculumMatch?.keyCollocations?.[0] || `practice ${word}`;
-  const coll2 = curriculumMatch?.keyCollocations?.[1] || `${word} skills`;
-  const coll3 = curriculumMatch?.keyCollocations?.[2] || `use of ${word}`;
-
-  const posResolved = curriculumMatch?.pos || oxfordMatch?.pos || 'noun';
-  const ipaResolved = curriculumMatch?.ipa || oxfordMatch?.ipa || `/${word}/`;
-  const meaningResolved = curriculumMatch?.meaningVi || oxfordMatch?.meaningVi || word;
-  const defResolved = curriculumMatch?.meaningVi
-    ? `${curriculumMatch.meaningVi} - Giáo trình Global Success (${posResolved})`
-    : (oxfordMatch 
-        ? `${oxfordMatch.meaningVi} - Oxford 3000 (${oxfordMatch.topicName})` 
-        : `a core concept or element of ${unitTitle.toLowerCase()} in English language and modern life`);
-
-  const item = DICT_BANK[word] || {
-    ipa: ipaResolved,
-    pos: posResolved,
-    grammarTag: posResolved.includes('v') ? '[transitive, intransitive]' : '[countable, uncountable]',
-    definition: defResolved,
-    examples: [
-      { fullSentence: `Teachers emphasize the importance of ${coll1} in daily communication.`, boldPhrase: coll1 },
-      { fullSentence: `Students are encouraged to improve their ${coll2} during the course.`, boldPhrase: coll2 },
-      { fullSentence: `Effective ${coll3} helps students excel in English examinations.`, boldPhrase: coll3 },
-      { fullSentence: `It is necessary to pay attention to ${word} when studying ${unitTitle}.`, boldPhrase: `attention to ${word}` },
-    ],
-    questions: [
-      {
-        before: "In order to succeed in school, students should ",
-        after: " on a regular basis.",
-        answer: coll1,
-        meaning: `Để thành công trong học tập, học sinh nên ${curriculumMatch?.meaningVi || word} một cách đều đặn.`,
-        explanation: `Dựa vào ví dụ từ điển: "...importance of ${coll1}...", cụm từ "${coll1}" hoàn thành câu đúng ngữ pháp và ngữ cảnh.`,
-      },
-      {
-        before: "Having strong ",
-        after: " will help candidates achieve high scores in the entrance exam.",
-        answer: coll2,
-        meaning: `Có các kỹ năng tốt về ${curriculumMatch?.meaningVi || word} sẽ giúp thí sinh đạt điểm cao trong kỳ thi tuyển sinh.`,
-        explanation: `Dựa vào ví dụ từ điển: "...improve their ${coll2}...", cụm từ "${coll2}" làm bổ ngữ/chủ ngữ chính xác.`,
-      },
-      {
-        before: "The teacher explained that the proper ",
-        after: " is essential for speaking English fluently.",
-        answer: coll3,
-        meaning: `Giáo viên giải thích rằng việc sử dụng ${curriculumMatch?.meaningVi || word} đúng cách là điều thiết yếu để nói tiếng Anh lưu loát.`,
-        explanation: `Dựa vào câu ví dụ từ điển: "...effective ${coll3}...", cụm từ "${coll3}" là đáp án phù hợp nhất.`,
-      },
-    ],
-  };
-
-  const selectedQuestions = item.questions.slice(0, questionCount).map((q, idx) => ({
-    questionNumber: startNum + idx,
-    sentenceBefore: q.before,
-    sentenceAfter: q.after,
-    answer: q.answer,
-    vietnameseMeaning: q.meaning,
-    explanation: q.explanation,
-  }));
-
-  const ipaDetails = deriveIPADetails(word, cambridgeOnline?.ukIpa || item.ipa);
-
+  // If live Cambridge Online data was successfully retrieved, enrich exercise
   if (cambridgeOnline) {
     if (cambridgeOnline.ukIpa) {
-      ipaDetails.cambridge.uk = cambridgeOnline.ukIpa;
-      ipaDetails.oxford.uk = cambridgeOnline.ukIpa.replace(/\./g, '');
-      ipaDetails.longman.uk = cambridgeOnline.ukIpa.replace(/\./g, '');
+      exercise.ipa = cambridgeOnline.ukIpa;
+      if (exercise.ipaDetails) {
+        exercise.ipaDetails.cambridge.uk = cambridgeOnline.ukIpa;
+        exercise.ipaDetails.oxford.uk = cambridgeOnline.ukIpa.replace(/\./g, '');
+        exercise.ipaDetails.longman.uk = cambridgeOnline.ukIpa.replace(/\./g, '');
+      }
     }
-    if (cambridgeOnline.usIpa) {
-      ipaDetails.cambridge.us = cambridgeOnline.usIpa;
-      ipaDetails.oxford.us = cambridgeOnline.usIpa.replace(/\./g, '');
-      ipaDetails.longman.us = cambridgeOnline.usIpa.replace(/\./g, '');
+    if (cambridgeOnline.usIpa && exercise.ipaDetails) {
+      exercise.ipaDetails.cambridge.us = cambridgeOnline.usIpa;
+      exercise.ipaDetails.oxford.us = cambridgeOnline.usIpa.replace(/\./g, '');
+      exercise.ipaDetails.longman.us = cambridgeOnline.usIpa.replace(/\./g, '');
     }
-    if (cambridgeOnline.ukAudio) {
-      ipaDetails.audioUrlUk = cambridgeOnline.ukAudio;
-      ipaDetails.cambridge.audioUk = cambridgeOnline.ukAudio;
+    if (cambridgeOnline.ukAudio && exercise.ipaDetails) {
+      exercise.ipaDetails.audioUrlUk = cambridgeOnline.ukAudio;
+      exercise.ipaDetails.cambridge.audioUk = cambridgeOnline.ukAudio;
     }
-    if (cambridgeOnline.usAudio) {
-      ipaDetails.audioUrlUs = cambridgeOnline.usAudio;
-      ipaDetails.cambridge.audioUs = cambridgeOnline.usAudio;
+    if (cambridgeOnline.usAudio && exercise.ipaDetails) {
+      exercise.ipaDetails.audioUrlUs = cambridgeOnline.usAudio;
+      exercise.ipaDetails.cambridge.audioUs = cambridgeOnline.usAudio;
+    }
+    if (cambridgeOnline.pos) {
+      exercise.partOfSpeech = cambridgeOnline.pos;
+    }
+    if (cambridgeOnline.grammarTag) {
+      exercise.grammarTag = cambridgeOnline.grammarTag;
+    }
+    if (cambridgeOnline.defText && cambridgeOnline.defText.length > 8) {
+      exercise.definitionText = cambridgeOnline.defText;
+    }
+    if (cambridgeOnline.sourceUrl) {
+      exercise.cambridgeUrl = cambridgeOnline.sourceUrl;
     }
   }
 
-  return {
-    keyword: word,
-    ipa: cambridgeOnline?.ukIpa || ipaDetails.cambridge.uk,
-    ipaDetails: ipaDetails,
-    cambridgeUrl: `https://dictionary.cambridge.org/dictionary/english/${encodeURIComponent(word)}`,
-    partOfSpeech: cambridgeOnline?.pos || item.pos,
-    dictionarySource: "Cambridge Advanced Learner's Dictionary (dictionary.cambridge.org)",
-    definitionNumber: '1.',
-    grammarTag: cambridgeOnline?.grammarTag || item.grammarTag,
-    definitionText: (cambridgeOnline?.defText && cambridgeOnline.defText.length > 10) ? cambridgeOnline.defText : item.definition,
-    examples: item.examples,
-    instructionEn: `Look at the entry of the word "${word}" in a dictionary. Complete the sentences with phrases from the entry. Do not use more than ${maxWords === 3 ? 'THREE' : maxWords} words for each phrase.`,
-    instructionVi: `(Từ câu ${startNum} đến câu ${startNum + selectedQuestions.length - 1}, dựa vào bảng bên dưới, thí sinh chọn cụm từ thích hợp (không quá ${maxWords} từ) để hoàn chỉnh mỗi câu và viết câu trả lời vào Phần ANSWERS.)`,
-    pointsTotal: '(0.5 pt)',
-    questions: selectedQuestions,
-  };
+  return exercise;
 }
+
 
 // Production or Dev server setup
 async function startServer() {

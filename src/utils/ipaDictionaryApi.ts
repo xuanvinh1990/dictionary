@@ -9,6 +9,7 @@ export interface CurriculumKeywordItem {
   grade: number;
   unit: number;
   unitTitle: string;
+  keyCollocations?: string[];
 }
 
 // Build index map of all 1,011 curriculum keywords for O(1) retrieval
@@ -27,6 +28,7 @@ for (const g of GLOBAL_SUCCESS_CURRICULUM) {
           grade: g.grade,
           unit: u.unit,
           unitTitle: u.title,
+          keyCollocations: kw.keyCollocations,
         });
       }
     }
@@ -44,6 +46,8 @@ export interface UnifiedSearchResult {
   meaningVi: string;
   source: 'curriculum' | 'oxford3000';
   badge: string;
+  grade?: number;
+  unit?: number;
 }
 
 export function searchAllKeywords(query: string, limit = 10): UnifiedSearchResult[] {
@@ -65,6 +69,8 @@ export function searchAllKeywords(query: string, limit = 10): UnifiedSearchResul
         meaningVi: item.meaningVi,
         source: 'curriculum',
         badge: `Lớp ${item.grade} - U${item.unit}`,
+        grade: item.grade,
+        unit: item.unit,
       });
       seen.add(lower);
     }

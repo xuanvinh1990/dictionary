@@ -9,9 +9,9 @@ import {
   BorderStyle,
   AlignmentType,
   WidthType,
-  UnderlineType,
 } from 'docx';
 import { DictionaryExercise } from '../data/globalSuccessCurriculum';
+import { DICTIONARY_SOURCES, resolveDictionarySourceId } from './dictionarySources';
 
 export async function exportExerciseToDocx(
   exercise: DictionaryExercise,
@@ -20,6 +20,11 @@ export async function exportExerciseToDocx(
   unitTitle: string,
   schoolName: string = 'TRƯỜNG THCS ........................................'
 ): Promise<void> {
+  const sourceId = resolveDictionarySourceId(exercise.dictionarySource);
+  const sourceInfo = DICTIONARY_SOURCES[sourceId];
+  const resolvedSourceUrl =
+    exercise.sourceUrl || sourceInfo.buildEntryUrl(exercise.keyword);
+  const resolvedSourceName = exercise.dictionarySource || sourceInfo.name;
   const doc = new Document({
     sections: [
       {
@@ -107,20 +112,21 @@ export async function exportExerciseToDocx(
             ],
           }),
 
-          // Section Title
+          // Section Title (Bold Italic matching the PDF exam format)
           new Paragraph({
             spacing: { before: 180, after: 120 },
             children: [
               new TextRun({
                 text: `VI. ${exercise.instructionEn} ${exercise.pointsTotal} `,
                 bold: true,
+                italics: true,
                 size: 22,
-                underline: { type: UnderlineType.SINGLE },
               }),
               new TextRun({
                 text: `${exercise.instructionVi}`,
                 bold: true,
-                size: 20,
+                italics: true,
+                size: 21,
               }),
             ],
           }),
@@ -231,13 +237,13 @@ export async function exportExerciseToDocx(
             ],
           }),
 
-          // Cambridge source note
+          // Dictionary source note
           new Paragraph({
             spacing: { before: 60, after: 140 },
             alignment: AlignmentType.RIGHT,
             children: [
               new TextRun({
-                text: `* Nguồn tra cứu từ điển: Cambridge Advanced Learner's Dictionary (https://dictionary.cambridge.org/)`,
+                text: `* Nguồn tra cứu từ điển: ${resolvedSourceName} (${resolvedSourceUrl})`,
                 italics: true,
                 size: 16,
                 color: '64748B',
@@ -245,16 +251,43 @@ export async function exportExerciseToDocx(
             ],
           }),
 
-          // Answers box header
-          new Paragraph({
-            spacing: { before: 140, after: 120 },
-            children: [
-              new TextRun({
-                text: 'ANSWERS',
-                bold: true,
-                size: 20,
+          // Bordered ANSWERS box header matching the PDF sample
+          new Table({
+            width: { size: 18, type: WidthType.PERCENTAGE },
+            borders: {
+              top: { style: BorderStyle.SINGLE, size: 8, color: '0F172A' },
+              bottom: { style: BorderStyle.SINGLE, size: 8, color: '0F172A' },
+              left: { style: BorderStyle.SINGLE, size: 8, color: '0F172A' },
+              right: { style: BorderStyle.SINGLE, size: 8, color: '0F172A' },
+            },
+            rows: [
+              new TableRow({
+                children: [
+                  new TableCell({
+                    margins: { top: 60, bottom: 60, left: 120, right: 120 },
+                    children: [
+                      new Paragraph({
+                        alignment: AlignmentType.CENTER,
+                        spacing: { before: 0, after: 0 },
+                        children: [
+                          new TextRun({
+                            text: 'ANSWERS',
+                            bold: true,
+                            size: 20,
+                            color: '0F172A',
+                          }),
+                        ],
+                      }),
+                    ],
+                  }),
+                ],
               }),
             ],
+          }),
+
+          new Paragraph({
+            spacing: { before: 100, after: 40 },
+            children: [],
           }),
 
           // Questions with blank lines

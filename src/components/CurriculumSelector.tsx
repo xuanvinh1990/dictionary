@@ -13,24 +13,36 @@ import {
   GraduationCap,
   BookOpen,
   FileText,
+  Shuffle,
+  Copy,
 } from 'lucide-react';
 import {
   GLOBAL_SUCCESS_CURRICULUM,
   GradeCurriculum,
   CurriculumUnit,
+  DictionaryExercise,
 } from '../data/globalSuccessCurriculum';
 import {
   deriveIPADetails,
   playEnglishAudio,
   searchAllKeywords,
-  UnifiedSearchResult,
+  findCurriculumWord,
 } from '../utils/ipaDictionaryApi';
 import {
   OXFORD_3000_TOPICS,
-  searchOxfordVocabulary,
+  findOxfordWord,
   OxfordTopic,
-  OxfordWordItem,
 } from '../data/oxfordVocabulary3000';
+import {
+  DICTIONARY_SOURCES,
+  DictionarySourceId,
+  resolveDictionarySourceId,
+} from '../utils/dictionarySources';
+import {
+  copyToClipboard,
+  formatKeywordInfoText,
+  KeywordCopyMode,
+} from '../utils/copyExport';
 
 interface CurriculumSelectorProps {
   selectedGrade: number;
@@ -39,6 +51,8 @@ interface CurriculumSelectorProps {
   onSelectUnit: (unit: number) => void;
   keyword: string;
   onChangeKeyword: (keyword: string) => void;
+  onUserTypeKeyword?: (keyword: string) => void;
+  currentExercise: DictionaryExercise;
   dictionarySource: string;
   onChangeDictionarySource: (source: string) => void;
   questionCount: number;
@@ -48,6 +62,7 @@ interface CurriculumSelectorProps {
   maxWords: number;
   onChangeMaxWords: (words: number) => void;
   onGenerate: () => void;
+  onSwitchQuestions?: () => void;
   isGenerating: boolean;
   onLoadSample: () => void;
   onSelectKeywordDirect?: (word: string, optGrade?: number, optUnit?: number) => void;
@@ -60,6 +75,8 @@ export const CurriculumSelector: React.FC<CurriculumSelectorProps> = ({
   onSelectUnit,
   keyword,
   onChangeKeyword,
+  onUserTypeKeyword,
+  currentExercise,
   dictionarySource,
   onChangeDictionarySource,
   questionCount,
@@ -69,6 +86,7 @@ export const CurriculumSelector: React.FC<CurriculumSelectorProps> = ({
   maxWords,
   onChangeMaxWords,
   onGenerate,
+  onSwitchQuestions,
   isGenerating,
   onLoadSample,
   onSelectKeywordDirect,
@@ -79,6 +97,7 @@ export const CurriculumSelector: React.FC<CurriculumSelectorProps> = ({
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [searchFilterInTopic, setSearchFilterInTopic] = useState('');
+  const [copiedKeyField, setCopiedKeyField] = useState<KeywordCopyMode | null>(null);
 
   const searchContainerRef = useRef<HTMLDivElement>(null);
 
@@ -134,6 +153,61 @@ export const CurriculumSelector: React.FC<CurriculumSelectorProps> = ({
     return deriveIPADetails(keyword.trim());
   }, [keyword]);
 
+  const activeSourceId: DictionarySourceId = resolveDictionarySourceId(dictionarySource);
+  const activeSourceInfo = DICTIONARY_SOURCES[activeSourceId];
+
+  const isSyncedWithExercise =
+    keyword.trim().toLowerCase() === currentExercise.keyword.trim().toLowerCase();
+
+  const activeDisplayedIPA = useMemo(() => {
+    if (isSyncedWithExercise && currentExercise.ipa) {
+      return currentExercise.ipa;
+    }
+    if (!activeIPADetails) return '';
+    if (activeSourceId === 'oxford') return activeIPADetails.oxford.uk;
+    if (activeSourceId === 'ldoce') return activeIPADetails.longman.uk;
+    return activeIPADetails.cambridge.uk;
+  }, [isSyncedWithExercise, currentExercise.ipa, activeIPADetails, activeSourceId]);
+
+  const keywordMeta = useMemo(() => {
+    const clean = keyword.trim().toLowerCase();
+    const curr = clean ? findCurriculumWord(clean, selectedGrade, selectedUnit) : undefined;
+    const ox = clean ? findOxfordWord(clean) : undefined;
+    return {
+      pos: isSyncedWithExercise
+        ? currentExercise.partOfSpeech
+        : curr?.pos || ox?.pos || 'noun',
+      grammarTag: isSyncedWithExercise ? currentExercise.grammarTag || '' : '',
+      definitionText: isSyncedWithExercise
+        ? currentExercise.definitionText
+        : curr?.meaningVi
+        ? `Đang tra nghĩa tiếng Anh online... (Nghĩa SGK: ${curr.meaningVi})`
+        : ox?.meaningVi
+        ? `Đang tra nghĩa tiếng Anh online... (Nghĩa Oxford 3000: ${ox.meaningVi})`
+        : 'Đang tra cứu định nghĩa online từ từ điển Cambridge, Longman, Oxford...',
+      meaningVi: curr?.meaningVi || ox?.meaningVi || '',
+    };
+  }, [keyword, selectedGrade, selectedUnit, isSyncedWithExercise, currentExercise]);
+
+  const handleCopyKeywordInfo = async (mode: KeywordCopyMode) => {
+    const targetExercise: DictionaryExercise = isSyncedWithExercise
+      ? { ...currentExercise, ipa: activeDisplayedIPA || currentExercise.ipa }
+      : {
+          ...currentExercise,
+          keyword: keyword.trim(),
+          ipa: activeDisplayedIPA,
+          partOfSpeech: keywordMeta.pos,
+          grammarTag: keywordMeta.grammarTag,
+          definitionText: keywordMeta.definitionText,
+        };
+    const text = formatKeywordInfoText(targetExercise, mode);
+    const ok = await copyToClipboard(text);
+    if (ok) {
+      setCopiedKeyField(mode);
+      setTimeout(() => setCopiedKeyField(null), 2200);
+    }
+  };
+
   return (
     <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 sm:p-6 mb-8">
       {/* Header Info */}
@@ -144,7 +218,7 @@ export const CurriculumSelector: React.FC<CurriculumSelectorProps> = ({
             <span>Cấu hình Đề bài & Chọn Ngữ liệu Tra cứu</span>
           </h2>
           <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-            Tích hợp đầy đủ chương trình <strong>Global Success (Lớp 6-9)</strong> và bộ <strong>3000 từ vựng thông dụng theo 60 chủ đề</strong> chuẩn phiên âm từ điển Cambridge
+            Tích hợp đầy đủ chương trình <strong>Global Success (Lớp 6-9)</strong> và bộ <strong>3000 từ vựng thông dụng theo 60 chủ đề</strong> chuẩn phiên âm Cambridge, Oxford & Longman
           </p>
         </div>
         <button
@@ -373,7 +447,50 @@ export const CurriculumSelector: React.FC<CurriculumSelectorProps> = ({
           </div>
         )}
 
-        {/* Step 3: Nhập Từ khóa (Keyword) with Autocomplete & Instant Cambridge Preview */}
+        {/* Step 2.5: Chọn Nguồn Từ Điển Tra Cứu (Cambridge / Oxford / Longman) */}
+        <div className="bg-slate-50/80 border border-slate-200 rounded-xl p-3.5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2.5">
+            <label className="text-xs font-semibold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+              <FileText className="w-3.5 h-3.5 text-blue-700" />
+              <span>Nguồn Từ Điển Tra Cứu (Dictionary Source)</span>
+            </label>
+            <span className="text-[11px] text-slate-500">
+              Chọn nguồn để lấy phiên âm IPA, định nghĩa & liên kết tra cứu trực tiếp
+            </span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            {(['cambridge', 'oxford', 'ldoce'] as DictionarySourceId[]).map((id) => {
+              const src = DICTIONARY_SOURCES[id];
+              const isSelected = activeSourceId === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => onChangeDictionarySource(src.name)}
+                  className={`px-3 py-2 rounded-xl border text-left transition-all flex items-center justify-between gap-2 cursor-pointer ${
+                    isSelected
+                      ? 'bg-blue-700 text-white border-blue-700 shadow-xs'
+                      : 'bg-white text-slate-700 border-slate-200 hover:border-blue-400 hover:bg-blue-50/50'
+                  }`}
+                >
+                  <div className="min-w-0">
+                    <div className="text-xs font-bold truncate">{src.shortName}</div>
+                    <div
+                      className={`text-[10px] truncate ${
+                        isSelected ? 'text-blue-100' : 'text-slate-500'
+                      }`}
+                    >
+                      {src.domain}
+                    </div>
+                  </div>
+                  {isSelected && <Check className="w-4 h-4 shrink-0 text-white" />}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Step 3: Nhập Từ khóa (Keyword) with Autocomplete & Instant Dictionary Preview */}
         <div ref={searchContainerRef} className="relative">
           <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
             Từ Khóa Cần Tra Cứu & Tạo Bài Tập (Keyword)
@@ -385,11 +502,16 @@ export const CurriculumSelector: React.FC<CurriculumSelectorProps> = ({
                 type="text"
                 value={keyword}
                 onChange={(e) => {
-                  onChangeKeyword(e.target.value);
+                  const val = e.target.value;
+                  if (onUserTypeKeyword) {
+                    onUserTypeKeyword(val);
+                  } else {
+                    onChangeKeyword(val);
+                  }
                   setIsSearchFocused(true);
                 }}
                 onFocus={() => setIsSearchFocused(true)}
-                placeholder="Nhập từ tiếng Anh (ví dụ: habit, uniform, scissors, biodiversity, ambulance...)"
+                placeholder="Nhập từ khóa tiếng Anh (key words), ví dụ: habit, uniform, tradition, environment..."
                 className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-300 rounded-xl text-sm font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600 shadow-2xs"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
@@ -428,6 +550,26 @@ export const CurriculumSelector: React.FC<CurriculumSelectorProps> = ({
                 </>
               )}
             </button>
+
+            {onSwitchQuestions && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSearchFocused(false);
+                  onSwitchQuestions();
+                }}
+                disabled={isGenerating || !keyword.trim()}
+                className={`px-4 py-2.5 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 border transition-all whitespace-nowrap ${
+                  isGenerating || !keyword.trim()
+                    ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
+                    : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300 shadow-2xs cursor-pointer active:scale-[0.99]'
+                }`}
+                title={`Đổi bộ câu hỏi khác cho từ khóa "${keyword.trim()}"`}
+              >
+                <Shuffle className="w-4 h-4 text-amber-700" />
+                <span>Đổi câu hỏi khác</span>
+              </button>
+            )}
           </div>
 
           {/* Autocomplete Dropdown */}
@@ -481,60 +623,184 @@ export const CurriculumSelector: React.FC<CurriculumSelectorProps> = ({
             </div>
           )}
 
-          {/* Live Cambridge IPA Preview Box */}
+          {/* Live Keyword Info Box: IPA, Part of Speech, Definition & Copy Buttons */}
           {keyword.trim() && activeIPADetails && (
-            <div className="mt-2.5 px-3.5 py-2 bg-blue-50/70 rounded-xl border border-blue-200/80 flex flex-wrap items-center justify-between gap-2.5 text-xs">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-bold text-blue-900">Phiên âm Cambridge:</span>
-                <span className="font-mono text-sm font-bold text-blue-950 bg-white px-2.5 py-0.5 rounded-md border border-blue-200 shadow-2xs">
-                  {activeIPADetails.cambridge.uk}
-                </span>
-                <a
-                  href={`https://dictionary.cambridge.org/dictionary/english/${encodeURIComponent(
-                    keyword.trim().toLowerCase()
-                  )}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-700 hover:text-blue-900 bg-white px-2 py-0.5 rounded border border-blue-200 hover:bg-blue-50 transition-colors shadow-2xs"
-                  title="Mở tra cứu trực tiếp trên https://dictionary.cambridge.org/"
-                >
-                  <span>dictionary.cambridge.org</span>
-                  <ExternalLink className="w-3 h-3 text-blue-700" />
-                </a>
+            <div className="mt-3 p-3.5 sm:p-4 bg-blue-50/75 rounded-xl border border-blue-200/90 flex flex-col gap-2.5 text-xs">
+              <div className="flex flex-wrap items-center justify-between gap-2.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[11px] font-extrabold uppercase tracking-wider text-blue-800">
+                    Thông tin từ khóa:
+                  </span>
+                  <span className="text-sm font-extrabold text-slate-950">
+                    {keyword.trim()}
+                  </span>
+                  <span className="font-mono text-sm font-bold text-blue-950 bg-white px-2.5 py-0.5 rounded-md border border-blue-200 shadow-2xs">
+                    {activeDisplayedIPA}
+                  </span>
+                  <span className="italic font-semibold text-slate-700 bg-white px-2 py-0.5 rounded-md border border-slate-200">
+                    {keywordMeta.pos}
+                    {keywordMeta.grammarTag ? ` ${keywordMeta.grammarTag}` : ''}
+                  </span>
+                  {keywordMeta.meaningVi && (
+                    <span className="text-[11px] font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                      {keywordMeta.meaningVi}
+                    </span>
+                  )}
+                  {isGenerating && (
+                    <span className="text-[11px] font-semibold text-blue-700 flex items-center gap-1">
+                      <RefreshCw className="w-3 h-3 animate-spin" />
+                      <span>Đang tra online...</span>
+                    </span>
+                  )}
+                </div>
+
+                {/* Audio Listen Buttons */}
+                <div className="flex items-center gap-1.5 self-end sm:self-auto">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      playEnglishAudio(
+                        keyword.trim(),
+                        'UK',
+                        (isSyncedWithExercise
+                          ? currentExercise.ipaDetails?.audioUrlUk
+                          : undefined) || activeIPADetails.audioUrlUk
+                      )
+                    }
+                    className="px-2.5 py-1 rounded-md bg-white hover:bg-blue-100 text-blue-800 border border-blue-200 text-xs font-bold flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
+                    title={`Phát âm chuẩn Anh - Anh (UK - ${activeSourceInfo.shortName})`}
+                  >
+                    <span>UK</span>
+                    <Volume2 className="w-3.5 h-3.5 text-blue-700" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      playEnglishAudio(
+                        keyword.trim(),
+                        'US',
+                        (isSyncedWithExercise
+                          ? currentExercise.ipaDetails?.audioUrlUs
+                          : undefined) || activeIPADetails.audioUrlUs
+                      )
+                    }
+                    className="px-2.5 py-1 rounded-md bg-white hover:bg-blue-100 text-blue-800 border border-blue-200 text-xs font-bold flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
+                    title={`Phát âm chuẩn Anh - Mỹ (US - ${activeSourceInfo.shortName})`}
+                  >
+                    <span>US</span>
+                    <Volume2 className="w-3.5 h-3.5 text-blue-700" />
+                  </button>
+                </div>
               </div>
 
-              {/* Audio Listen Buttons */}
-              <div className="flex items-center gap-1.5 self-end sm:self-auto">
-                <button
-                  type="button"
-                  onClick={() =>
-                    playEnglishAudio(
-                      keyword.trim(),
-                      'UK',
-                      activeIPADetails.audioUrlUk
-                    )
-                  }
-                  className="px-2.5 py-1 rounded-md bg-white hover:bg-blue-100 text-blue-800 border border-blue-200 text-xs font-bold flex items-center gap-1 shadow-2xs transition-colors"
-                  title="Phát âm chuẩn Anh - Anh (UK - Cambridge)"
-                >
-                  <span>🇬🇧 UK</span>
-                  <Volume2 className="w-3.5 h-3.5 text-blue-700" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    playEnglishAudio(
-                      keyword.trim(),
-                      'US',
-                      activeIPADetails.audioUrlUs
-                    )
-                  }
-                  className="px-2.5 py-1 rounded-md bg-white hover:bg-blue-100 text-blue-800 border border-blue-200 text-xs font-bold flex items-center gap-1 shadow-2xs transition-colors"
-                  title="Phát âm chuẩn Anh - Mỹ (US - Cambridge)"
-                >
-                  <span>🇺🇸 US</span>
-                  <Volume2 className="w-3.5 h-3.5 text-blue-700" />
-                </button>
+              {/* Displayed Keyword Definition */}
+              <div className="bg-white/95 px-3 py-2 rounded-lg border border-blue-200/70 text-xs sm:text-[13px] text-slate-800 leading-relaxed">
+                <span className="font-bold text-slate-900 mr-1.5">
+                  Định nghĩa ({activeSourceInfo.shortName}):
+                </span>
+                <span>{keywordMeta.definitionText}</span>
+              </div>
+
+              {/* Bottom bar: Copy IPA / POS / Definition + Direct Multi-Source Links */}
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-blue-200/60">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handleCopyKeywordInfo('ipa')}
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded bg-white hover:bg-blue-100/70 text-slate-700 border border-slate-200 transition-colors cursor-pointer"
+                  >
+                    {copiedKeyField === 'ipa' ? (
+                      <>
+                        <Check className="w-3 h-3 text-emerald-600" />
+                        <span className="text-emerald-700">Đã copy IPA</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3 h-3 text-slate-500" />
+                        <span>Copy IPA</span>
+                      </>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleCopyKeywordInfo('pos')}
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded bg-white hover:bg-blue-100/70 text-slate-700 border border-slate-200 transition-colors cursor-pointer"
+                  >
+                    {copiedKeyField === 'pos' ? (
+                      <>
+                        <Check className="w-3 h-3 text-emerald-600" />
+                        <span className="text-emerald-700">Đã copy từ loại</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3 h-3 text-slate-500" />
+                        <span>Copy từ loại</span>
+                      </>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleCopyKeywordInfo('definition')}
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded bg-white hover:bg-blue-100/70 text-slate-700 border border-slate-200 transition-colors cursor-pointer"
+                  >
+                    {copiedKeyField === 'definition' ? (
+                      <>
+                        <Check className="w-3 h-3 text-emerald-600" />
+                        <span className="text-emerald-700">Đã copy định nghĩa</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3 h-3 text-slate-500" />
+                        <span>Copy định nghĩa</span>
+                      </>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleCopyKeywordInfo('all')}
+                    className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded bg-blue-700 hover:bg-blue-800 text-white transition-colors shadow-2xs cursor-pointer"
+                  >
+                    {copiedKeyField === 'all' ? (
+                      <>
+                        <Check className="w-3 h-3 text-emerald-300" />
+                        <span>Đã copy trọn bộ!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3 h-3 text-blue-100" />
+                        <span>Copy IPA + Từ loại + Định nghĩa</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {/* Direct Lookup Links across Cambridge, Oxford, Longman */}
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[11px] font-semibold text-slate-600 mr-0.5">
+                    Tra online:
+                  </span>
+                  {(['cambridge', 'oxford', 'ldoce'] as DictionarySourceId[]).map((id) => {
+                    const src = DICTIONARY_SOURCES[id];
+                    const isActive = activeSourceId === id;
+                    return (
+                      <a
+                        key={id}
+                        href={src.buildEntryUrl(keyword)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded border transition-colors shadow-2xs ${
+                          isActive
+                            ? 'bg-blue-700 text-white border-blue-700 hover:bg-blue-800'
+                            : 'bg-white text-blue-700 border-blue-200 hover:bg-blue-50 hover:text-blue-900'
+                        }`}
+                        title={`Mở tra cứu "${keyword.trim()}" trên ${src.baseUrl}`}
+                      >
+                        <span>{src.shortName}</span>
+                        <ExternalLink className={`w-3 h-3 ${isActive ? 'text-white' : 'text-blue-700'}`} />
+                      </a>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           )}
@@ -621,17 +887,24 @@ export const CurriculumSelector: React.FC<CurriculumSelectorProps> = ({
 
           {showAdvanced && (
             <div className="mt-3 p-4 bg-slate-50 rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
-              {/* Dictionary source (Locked to Cambridge) */}
+              {/* Dictionary source selector */}
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">
                   Chuẩn quy ước phiên âm & từ điển
                 </label>
-                <div className="w-full bg-blue-50/90 border border-blue-200 rounded-lg px-2.5 py-2 text-blue-950 font-bold flex items-center justify-between text-xs">
-                  <span>Cambridge Dictionary (CALD)</span>
-                  <Check className="w-4 h-4 text-blue-700" />
-                </div>
+                <select
+                  value={activeSourceInfo.name}
+                  onChange={(e) => onChangeDictionarySource(e.target.value)}
+                  className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-2 text-slate-800 font-semibold focus:outline-none focus:ring-1 focus:ring-blue-600 cursor-pointer"
+                >
+                  {(['cambridge', 'oxford', 'ldoce'] as DictionarySourceId[]).map((id) => (
+                    <option key={id} value={DICTIONARY_SOURCES[id].name}>
+                      {DICTIONARY_SOURCES[id].shortName} ({DICTIONARY_SOURCES[id].domain})
+                    </option>
+                  ))}
+                </select>
                 <span className="text-[10px] text-slate-500 mt-1 block">
-                  Cố định theo chuẩn phiên âm từ điển Cambridge
+                  Hỗ trợ Cambridge, Oxford Learner's & Longman (LDOCE)
                 </span>
               </div>
 

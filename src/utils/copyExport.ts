@@ -1,13 +1,38 @@
 import { DictionaryExercise } from '../data/globalSuccessCurriculum';
+import { DICTIONARY_SOURCES, resolveDictionarySourceId } from './dictionarySources';
+
+export type KeywordCopyMode = 'all' | 'ipa' | 'pos' | 'definition';
+
+export function formatKeywordInfoText(
+  exercise: DictionaryExercise,
+  mode: KeywordCopyMode = 'all'
+): string {
+  const ipa = (exercise.ipa || '').trim();
+  const pos = [exercise.partOfSpeech, exercise.grammarTag]
+    .filter(Boolean)
+    .join(' ')
+    .trim();
+  const definition = `${exercise.definitionNumber || '1.'} ${
+    exercise.grammarTag ? `${exercise.grammarTag} ` : ''
+  }${exercise.definitionText}`.trim();
+
+  if (mode === 'ipa') return ipa;
+  if (mode === 'pos') return pos || exercise.partOfSpeech;
+  if (mode === 'definition') return exercise.definitionText;
+
+  return `${exercise.keyword} ${ipa} (${exercise.partOfSpeech})\n${definition}`;
+}
 
 export function formatExerciseText(
   exercise: DictionaryExercise,
   includeAnswers: boolean = false
 ): string {
+  const sourceId = resolveDictionarySourceId(exercise.dictionarySource);
+  const sourceInfo = DICTIONARY_SOURCES[sourceId];
+  const sourceUrl = exercise.sourceUrl || sourceInfo.buildEntryUrl(exercise.keyword);
   let content = '';
 
-  content += `VI. ${exercise.instructionEn} ${exercise.pointsTotal}\n`;
-  content += `${exercise.instructionVi}\n\n`;
+  content += `VI. ${exercise.instructionEn} ${exercise.pointsTotal} ${exercise.instructionVi}\n\n`;
 
   // Dictionary box representation
   content += `┌─────────────────────────────────────────────────────────────\n`;
@@ -18,10 +43,10 @@ export function formatExerciseText(
   exercise.examples.forEach((ex) => {
     content += `│   o ${ex.fullSentence}\n`;
   });
-  content += `│ [Nguồn tra cứu: https://dictionary.cambridge.org/]\n`;
-  content += `└─────────────────────────────────────────────────────────────\n\n`;
+  content += `└─────────────────────────────────────────────────────────────\n`;
+  content += `* Nguồn từ điển: ${sourceInfo.name} (${sourceUrl})\n\n`;
 
-  content += `ANSWERS\n`;
+  content += `[ANSWERS]\n`;
   exercise.questions.forEach((q) => {
     content += `${q.questionNumber}. ${q.sentenceBefore}________________________${q.sentenceAfter}\n`;
   });

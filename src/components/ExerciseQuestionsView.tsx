@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   FileText,
   Copy,
@@ -11,6 +11,7 @@ import {
   GraduationCap,
   Printer,
   Sparkles,
+  Shuffle,
 } from 'lucide-react';
 import { DictionaryExercise } from '../data/globalSuccessCurriculum';
 import { formatExerciseText, copyToClipboard } from '../utils/copyExport';
@@ -19,6 +20,8 @@ interface ExerciseQuestionsViewProps {
   exercise: DictionaryExercise;
   onExportDocx: () => void;
   isExporting: boolean;
+  onSwitchQuestions?: () => void;
+  isSwitchingQuestions?: boolean;
   grade: number;
   unit: number;
   unitTitle: string;
@@ -28,6 +31,8 @@ export const ExerciseQuestionsView: React.FC<ExerciseQuestionsViewProps> = ({
   exercise,
   onExportDocx,
   isExporting,
+  onSwitchQuestions,
+  isSwitchingQuestions = false,
   grade,
   unit,
   unitTitle,
@@ -39,6 +44,12 @@ export const ExerciseQuestionsView: React.FC<ExerciseQuestionsViewProps> = ({
   const [userAnswers, setUserAnswers] = useState<{ [key: number]: string }>({});
   const [hasCheckedAnswers, setHasCheckedAnswers] = useState(false);
   const [showHints, setShowHints] = useState<{ [key: number]: boolean }>({});
+
+  useEffect(() => {
+    setUserAnswers({});
+    setHasCheckedAnswers(false);
+    setShowHints({});
+  }, [exercise]);
 
   const handleCopy = async (type: 'questions' | 'full' | 'key') => {
     let text = '';
@@ -128,23 +139,40 @@ export const ExerciseQuestionsView: React.FC<ExerciseQuestionsViewProps> = ({
           </button>
         </div>
 
-        {/* Quick Action Buttons: Copy & Export */}
+        {/* Quick Action Buttons: Switch Questions, Copy & Export */}
         <div className="flex items-center gap-2 flex-wrap">
+          {onSwitchQuestions && (
+            <button
+              type="button"
+              onClick={onSwitchQuestions}
+              disabled={isSwitchingQuestions}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border shadow-2xs transition-colors ${
+                isSwitchingQuestions
+                  ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
+                  : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300 cursor-pointer'
+              }`}
+              title={`Đổi sang bộ câu hỏi khác cho từ khóa "${exercise.keyword}"`}
+            >
+              <Shuffle className={`w-3.5 h-3.5 text-amber-700 ${isSwitchingQuestions ? 'animate-pulse' : ''}`} />
+              <span>{isSwitchingQuestions ? 'Đang đổi...' : 'Đổi câu hỏi khác'}</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => handleCopy('questions')}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 shadow-2xs transition-colors"
-            title="Copy nội dung câu hỏi để dán vào Word hoặc Google Forms"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 shadow-2xs transition-colors cursor-pointer"
+            title="Copy toàn bộ nội dung câu hỏi để dán vào Word hoặc Google Docs"
           >
             {copiedType === 'questions' ? (
               <>
                 <Check className="w-3.5 h-3.5 text-emerald-600" />
-                <span className="text-emerald-700">Đã copy đề bài!</span>
+                <span className="text-emerald-700">Đã copy câu hỏi!</span>
               </>
             ) : (
               <>
                 <Copy className="w-3.5 h-3.5 text-slate-500" />
-                <span>Copy đề bài</span>
+                <span>Copy nội dung câu hỏi</span>
               </>
             )}
           </button>
@@ -182,33 +210,83 @@ export const ExerciseQuestionsView: React.FC<ExerciseQuestionsViewProps> = ({
       </div>
 
       {/* Content Area */}
-      <div className="p-6">
-        {/* TAB 1: EXAM PRINT PREVIEW (Matches 100% the uploaded image!) */}
+      <div className="p-5 sm:p-6">
+        {/* TAB 1: EXAM PRINT PREVIEW (Matches 100% the attached PDF screenshot layout!) */}
         {activeTab === 'exam' && (
-          <div className="space-y-6 font-sans">
-            {/* Instruction line */}
-            <div className="text-slate-900 leading-snug">
-              <span className="font-bold underline text-sm sm:text-base">
-                VI. {exercise.instructionEn} {exercise.pointsTotal}
-              </span>{' '}
-              <span className="font-bold text-xs sm:text-sm">
-                {exercise.instructionVi}
-              </span>
+          <div className="space-y-5 font-sans">
+            {/* Instruction line: bold italic matching the PDF */}
+            <div className="text-slate-950 leading-snug text-sm sm:text-[15px] font-bold italic">
+              VI. {exercise.instructionEn} {exercise.pointsTotal} {exercise.instructionVi}
             </div>
 
-            {/* ANSWERS box header */}
-            <div>
-              <div className="inline-block border-2 border-slate-900 px-3 py-1 text-xs font-bold uppercase tracking-wider text-slate-900 mb-3 bg-white">
+            {/* Clean Printable Bordered Dictionary Entry Box (exact match with PDF image) */}
+            <div className="border-[1.5px] border-slate-900 px-4 py-3.5 sm:px-5 sm:py-4 bg-white text-slate-950">
+              <div className="flex items-baseline gap-2.5 flex-wrap mb-0.5">
+                <span className="text-lg sm:text-xl font-bold tracking-tight">
+                  {exercise.keyword}
+                </span>
+                <span className="text-sm sm:text-base font-medium font-mono text-slate-900">
+                  {exercise.ipa}
+                </span>
+              </div>
+
+              <div className="italic text-sm text-slate-900 ml-5 mb-1">
+                {exercise.partOfSpeech}
+              </div>
+
+              <div className="text-sm leading-snug text-slate-950 mb-2">
+                <span className="mr-1">{exercise.definitionNumber || '1.'}</span>
+                {exercise.grammarTag && (
+                  <span className="mr-1">{exercise.grammarTag}</span>
+                )}
+                <span>{exercise.definitionText}</span>
+              </div>
+
+              <div className="space-y-1 ml-6 sm:ml-8 text-sm leading-snug">
+                {exercise.examples.map((ex, idx) => {
+                  const sentence = ex.fullSentence;
+                  const boldPhrase = ex.boldPhrase;
+                  const parts = boldPhrase ? sentence.split(boldPhrase) : [sentence];
+
+                  return (
+                    <div key={idx} className="flex items-start gap-3">
+                      <span className="text-slate-800 select-none text-xs mt-0.5 leading-none">
+                        o
+                      </span>
+                      <p className="italic text-slate-950 flex-1">
+                        {parts.length > 1 ? (
+                          <>
+                            <span>{parts[0]}</span>
+                            <strong className="font-bold italic text-slate-950">
+                              {boldPhrase}
+                            </strong>
+                            <span>{parts.slice(1).join(boldPhrase)}</span>
+                          </>
+                        ) : (
+                          sentence
+                        )}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* ANSWERS box header + numbered fill-in-the-blank lines */}
+            <div className="pt-1">
+              <div className="inline-block border-[1.5px] border-slate-900 px-3 py-1 text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-950 mb-3 bg-white">
                 ANSWERS
               </div>
 
-              {/* Numbered Fill-in-the-blank lines */}
-              <div className="space-y-3.5 pl-1">
+              <div className="space-y-3 pl-0.5">
                 {exercise.questions.map((q) => (
-                  <div key={q.questionNumber} className="text-sm sm:text-base text-slate-900 leading-relaxed flex flex-wrap items-baseline gap-1">
-                    <span className="font-bold mr-1">{q.questionNumber}.</span>
+                  <div
+                    key={q.questionNumber}
+                    className="text-sm sm:text-[15px] text-slate-950 leading-relaxed"
+                  >
+                    <span className="font-bold mr-1.5">{q.questionNumber}.</span>
                     <span>{q.sentenceBefore}</span>
-                    <span className="inline-block border-b-2 border-slate-900 min-w-[200px] sm:min-w-[260px] text-center font-medium mx-1">
+                    <span className="inline-block border-b border-slate-900 min-w-[190px] sm:min-w-[260px] text-center mx-1">
                       &nbsp;
                     </span>
                     <span>{q.sentenceAfter}</span>
@@ -217,14 +295,15 @@ export const ExerciseQuestionsView: React.FC<ExerciseQuestionsViewProps> = ({
               </div>
             </div>
 
-            {/* Quick Note for Teachers */}
-            <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl text-xs text-blue-900 flex items-center justify-between">
+            {/* Meta footer & Quick Note for Teachers */}
+            <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl text-xs text-blue-900 flex flex-wrap items-center justify-between gap-2">
               <div>
-                <strong>Gợi ý giáo viên:</strong> Bấm nút <strong>"Xuất file Word (.docx)"</strong> ở góc trên để tải đề thi định dạng in A4 hoàn chỉnh có sẵn khung từ điển và lời giải.
+                <strong>Gợi ý giáo viên:</strong> Bấm <strong>"Xuất file Word (.docx)"</strong> để tải đề thi hoàn chỉnh (Lớp {grade} — Unit {unit}: {unitTitle}) hoặc <strong>"Copy nội dung câu hỏi"</strong> ở trên.
               </div>
               <button
+                type="button"
                 onClick={() => setActiveTab('solution')}
-                className="font-bold underline text-blue-800 hover:text-blue-950 ml-2 whitespace-nowrap"
+                className="font-bold underline text-blue-800 hover:text-blue-950 whitespace-nowrap cursor-pointer"
               >
                 Xem đáp án ngay
               </button>
@@ -400,10 +479,19 @@ export const ExerciseQuestionsView: React.FC<ExerciseQuestionsViewProps> = ({
               <button
                 type="button"
                 onClick={() => handleCopy('key')}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 cursor-pointer"
               >
-                <Copy className="w-3.5 h-3.5 text-slate-500" />
-                <span>Copy đáp án</span>
+                {copiedType === 'key' ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                    <span className="text-emerald-700">Đã copy đáp án!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5 text-slate-500" />
+                    <span>Copy đáp án</span>
+                  </>
+                )}
               </button>
             </div>
 

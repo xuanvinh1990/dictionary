@@ -34,14 +34,21 @@ interface GenerateRequest {
   questionCount?: number;
   startQuestionNum?: number;
   maxWords?: number;
+  variationSeed?: number;
 }
 
 import { deriveIPADetails } from './src/utils/ipaDictionaryApi';
 import { GLOBAL_SUCCESS_CURRICULUM } from './src/data/globalSuccessCurriculum';
 import { findOxfordWord } from './src/data/oxfordVocabulary3000';
 import { generateExerciseForKeyword } from './src/utils/exerciseGenerator';
+import {
+  DICTIONARY_SOURCES,
+  DictionarySourceId,
+  resolveDictionarySourceId,
+} from './src/utils/dictionarySources';
 
-interface CambridgeOnlineResult {
+interface OnlineDictionaryResult {
+  sourceId: DictionarySourceId;
   keyword: string;
   ukIpa: string;
   usIpa: string;
@@ -51,26 +58,40 @@ interface CambridgeOnlineResult {
   grammarTag: string;
   defText: string;
   examples: string[];
+  examplePairs?: { fullSentence: string; boldPhrase: string }[];
+  syllables?: string;
   sourceUrl: string;
+  isGenericFallback?: boolean;
+}
+
+const BROWSER_FETCH_HEADERS = {
+  'User-Agent':
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+  'Accept-Language': 'en-US,en;q=0.9',
+};
+
+function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ');
 }
 
 /**
  * Fetch and parse authentic live entry directly from https://dictionary.cambridge.org/
  */
-async function fetchCambridgeDictionaryOnline(word: string): Promise<CambridgeOnlineResult | null> {
-  const clean = encodeURIComponent(word.trim().toLowerCase());
-  const url = `https://dictionary.cambridge.org/dictionary/english/${clean}`;
+async function fetchCambridgeDictionaryOnline(word: string): Promise<OnlineDictionaryResult | null> {
+  const url = DICTIONARY_SOURCES.cambridge.buildEntryUrl(word);
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 3500);
     const res = await fetch(url, {
       signal: controller.signal,
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-      },
+      headers: BROWSER_FETCH_HEADERS,
     });
     clearTimeout(timeout);
 
@@ -84,25 +105,27 @@ async function fetchCambridgeDictionaryOnline(word: string): Promise<CambridgeOn
     const posMatch = html.match(/class="pos dpos"[^>]*>([^<]+)<\/span>/);
     const gramMatch = html.match(/<span class="gram dgram"><a[^>]*>\[\s*<span class="gc dgc">([^<]+)<\/span>\s*\]<\/a><\/span>/);
     const defMatch = html.match(/<div class="def ddef_d db">([\s\S]*?)<\/div>/);
-    let defText = defMatch ? defMatch[1].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim() : '';
+    let defText = defMatch
+      ? decodeHtmlEntities(defMatch[1].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim())
+      : '';
     if (defText.endsWith(':')) defText = defText.slice(0, -1).trim();
 
     const exMatches = [...html.matchAll(/<span class="eg deg">([\s\S]*?)<\/span>/g)];
     const examples = exMatches
-      .map((m) => m[1].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim())
+      .map((m) => decodeHtmlEntities(m[1].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim()))
       .filter((s) => s.length > 5)
       .slice(0, 6);
 
     let ukIpa = ukIpaMatch ? `/${ukIpaMatch[1].trim()}/` : '';
     let usIpa = usIpaMatch ? `/${usIpaMatch[1].trim()}/` : ukIpa;
 
-    // Normalize mid-dots if needed to Cambridge syllable dot
     ukIpa = ukIpa.replace(/·/g, '.');
     usIpa = usIpa.replace(/·/g, '.');
 
     if (!ukIpa && !usIpa) return null;
 
     return {
+      sourceId: 'cambridge',
       keyword: word,
       ukIpa,
       usIpa,
@@ -119,6 +142,365 @@ async function fetchCambridgeDictionaryOnline(word: string): Promise<CambridgeOn
   }
 }
 
+/**
+ * Fetch and parse authentic live entry directly from https://www.oxfordlearnersdictionaries.com/
+ */
+async function fetchOxfordDictionaryOnline(word: string): Promise<OnlineDictionaryResult | null> {
+  const url = DICTIONARY_SOURCES.oxford.buildEntryUrl(word);
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3500);
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: BROWSER_FETCH_HEADERS,
+    });
+    clearTimeout(timeout);
+
+    if (!res.ok) return null;
+    const html = await res.text();
+
+    const phonMatches = [...html.matchAll(/class="phon"[^>]*>([^<]+)<\/span>/g)];
+    const rawUkIpa = phonMatches[0]?.[1]?.trim() || '';
+    const rawUsIpa = phonMatches[1]?.[1]?.trim() || rawUkIpa;
+
+    const normalizeSlashes = (ipa: string) => {
+      if (!ipa) return '';
+      const stripped = ipa.replace(/^\/+|\/+$/g, '').trim();
+      return stripped ? `/${stripped}/` : '';
+    };
+
+    const ukIpa = normalizeSlashes(rawUkIpa);
+    const usIpa = normalizeSlashes(rawUsIpa) || ukIpa;
+
+    const audioMatches = [...html.matchAll(/data-src-mp3="([^"]+)"/g)].map((m) => m[1]);
+    const ukAudio = audioMatches.find((u) => u.includes('__gb_') || u.includes('uk_pron')) || audioMatches[0];
+    const usAudio = audioMatches.find((u) => u.includes('__us_') || u.includes('us_pron')) || audioMatches[1];
+
+    const posMatch = html.match(/class="pos"[^>]*>([^<]+)<\/span>/);
+    const gramMatch = html.match(/class="grammar"[^>]*>([^<]+)<\/span>/);
+    let grammarTag = gramMatch ? decodeHtmlEntities(gramMatch[1].trim()) : '';
+    if (grammarTag && !grammarTag.startsWith('[')) {
+      grammarTag = `[${grammarTag}]`;
+    }
+
+    const defMatch = html.match(/class="def"[^>]*>([\s\S]*?)<\/span>/);
+    let defText = defMatch
+      ? decodeHtmlEntities(defMatch[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim())
+      : '';
+    if (defText.endsWith(':')) defText = defText.slice(0, -1).trim();
+
+    const liMatches = [...html.matchAll(/<li[^>]*>[\s\S]*?<span class="x"[^>]*>([\s\S]*?)<\/li>/g)].slice(0, 6);
+    const examplePairs: { fullSentence: string; boldPhrase: string }[] = [];
+    const examples: string[] = [];
+
+    for (const m of liMatches) {
+      const block = m[1];
+      const clMatch = block.match(/<span class="cl"[^>]*>([\s\S]*?)<\/span>/);
+      const boldPhrase = clMatch
+        ? decodeHtmlEntities(clMatch[1].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim())
+        : '';
+      const fullSentence = decodeHtmlEntities(
+        block
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/\s+/g, ' ')
+          .replace(/\s+([.,;!?])/g, '$1')
+          .trim()
+      );
+      if (fullSentence.length > 5) {
+        examples.push(fullSentence);
+        if (boldPhrase) {
+          examplePairs.push({ fullSentence, boldPhrase });
+        }
+      }
+    }
+
+    if (!ukIpa && !defText) return null;
+
+    return {
+      sourceId: 'oxford',
+      keyword: word,
+      ukIpa,
+      usIpa,
+      ukAudio,
+      usAudio,
+      pos: posMatch ? posMatch[1].trim() : 'noun',
+      grammarTag: grammarTag || '[countable]',
+      defText,
+      examples,
+      examplePairs: examplePairs.length > 0 ? examplePairs : undefined,
+      sourceUrl: url,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fetch and parse authentic live entry directly from https://www.ldoceonline.com/
+ */
+async function fetchLongmanDictionaryOnline(word: string): Promise<OnlineDictionaryResult | null> {
+  const url = DICTIONARY_SOURCES.ldoce.buildEntryUrl(word);
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3500);
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: BROWSER_FETCH_HEADERS,
+    });
+    clearTimeout(timeout);
+
+    if (!res.ok) return null;
+    const html = await res.text();
+
+    const pronMatch = html.match(/class="PRON"[^>]*>([^<]+)<\/span>/);
+    const ameMatch = html.match(/class="AMEVARPRON"[^>]*>([\s\S]*?)<\/span>/);
+    const hyphenMatch = html.match(/class="HYPHENATION"[^>]*>([^<]+)<\/span>/);
+
+    const normalizeSlashes = (ipa: string) => {
+      const cleaned = ipa.replace(/^\$\s*/, '').replace(/^\/+|\/+$/g, '').trim();
+      return cleaned ? `/${cleaned}/` : '';
+    };
+
+    const ukIpa = normalizeSlashes(pronMatch ? decodeHtmlEntities(pronMatch[1]) : '');
+    const rawUs = ameMatch ? decodeHtmlEntities(ameMatch[1].replace(/<[^>]+>/g, '')) : '';
+    const usIpa = normalizeSlashes(rawUs) || ukIpa;
+
+    const audioMatches = [...html.matchAll(/data-src-mp3="([^"]+)"/g)].map((m) => m[1]);
+    const ukAudio = audioMatches.find((u) => u.includes('breProns')) || audioMatches[0];
+    const usAudio = audioMatches.find((u) => u.includes('ameProns')) || audioMatches[1];
+
+    const posMatch = html.match(/class="POS"[^>]*>([^<]+)<\/span>/);
+    const gramMatch = html.match(/<span class="GRAM"[^>]*>([\s\S]*?)<\/span>(?=\s*<\/span>|\s*<span class="(?:DEF|ACTIV|SENSE|EXAMPLE|REGISTERLAB|GEO)")/);
+    let grammarTag = gramMatch
+      ? decodeHtmlEntities(gramMatch[1].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim())
+      : '';
+    if (grammarTag === '[' || grammarTag === ']') grammarTag = '';
+    if (grammarTag && !grammarTag.startsWith('[')) {
+      grammarTag = `[${grammarTag}]`;
+    }
+    if (grammarTag.startsWith('[') && !grammarTag.endsWith(']')) {
+      grammarTag = `${grammarTag}]`;
+    }
+
+    const defMatch = html.match(/class="DEF"[^>]*>([\s\S]*?)<\/span>/);
+    let defText = defMatch
+      ? decodeHtmlEntities(defMatch[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim())
+      : '';
+    if (defText.endsWith(':')) defText = defText.slice(0, -1).trim();
+
+    const cleanedHtml = html.replace(/<span[^>]*class="speaker[^"]*"[^>]*>[\s\S]*?<\/span>/g, '');
+    const exMatches = [...cleanedHtml.matchAll(/<span class="EXAMPLE"[^>]*>([\s\S]*?)<\/span>/g)];
+    const examples = exMatches
+      .map((m) =>
+        decodeHtmlEntities(
+          m[1]
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/\s+/g, ' ')
+            .replace(/\s+([.,;!?])/g, '$1')
+            .trim()
+        )
+      )
+      .filter((s) => s.length > 5)
+      .slice(0, 6);
+
+    if (!ukIpa && !defText) return null;
+
+    return {
+      sourceId: 'ldoce',
+      keyword: word,
+      ukIpa,
+      usIpa,
+      ukAudio,
+      usAudio,
+      pos: posMatch ? posMatch[1].trim() : 'noun',
+      grammarTag: grammarTag || '[countable]',
+      defText,
+      examples,
+      syllables: hyphenMatch ? decodeHtmlEntities(hyphenMatch[1].trim()) : undefined,
+      sourceUrl: url,
+    };
+  } catch {
+    return null;
+  }
+}
+
+interface DictionaryApiDevResult {
+  ukIpa: string;
+  usIpa: string;
+  ukAudio?: string;
+  usAudio?: string;
+  pos: string;
+  grammarTag: string;
+  defText: string;
+  examples: string[];
+}
+
+/**
+ * Reliable JSON dictionary API fallback (https://dictionaryapi.dev/)
+ * Used when Cambridge/Oxford/LDOCE HTML scraping is blocked or missing definition/POS fields.
+ */
+async function fetchDictionaryApiDevFallback(word: string): Promise<DictionaryApiDevResult | null> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3000);
+    const res = await fetch(
+      `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`,
+      { signal: controller.signal }
+    );
+    clearTimeout(timeout);
+    if (!res.ok) return null;
+
+    const data = await res.json();
+    if (!Array.isArray(data) || !data[0]) return null;
+    const entry = data[0];
+
+    let ukIpa = '';
+    let usIpa = '';
+    let ukAudio: string | undefined;
+    let usAudio: string | undefined;
+
+    if (typeof entry.phonetic === 'string' && entry.phonetic.trim()) {
+      ukIpa = entry.phonetic.trim();
+    }
+
+    if (Array.isArray(entry.phonetics)) {
+      for (const p of entry.phonetics) {
+        const audio = typeof p.audio === 'string' ? p.audio.trim() : '';
+        const text = typeof p.text === 'string' ? p.text.trim() : '';
+        if (audio) {
+          if (audio.includes('-uk') || audio.includes('en-uk')) {
+            ukAudio = audio;
+            if (text) ukIpa = text;
+          } else if (audio.includes('-us') || audio.includes('en-us')) {
+            usAudio = audio;
+            if (text) usIpa = text;
+          } else if (!ukAudio) {
+            ukAudio = audio;
+          }
+        }
+        if (text && !ukIpa) {
+          ukIpa = text;
+        }
+      }
+    }
+
+    if (ukIpa && !ukIpa.startsWith('/')) ukIpa = `/${ukIpa.replace(/^\/+|\/+$/g, '')}/`;
+    if (usIpa && !usIpa.startsWith('/')) usIpa = `/${usIpa.replace(/^\/+|\/+$/g, '')}/`;
+    if (!usIpa) usIpa = ukIpa;
+
+    const meanings = Array.isArray(entry.meanings) ? entry.meanings : [];
+    const primaryMeaning = meanings[0];
+    const pos =
+      typeof primaryMeaning?.partOfSpeech === 'string' && primaryMeaning.partOfSpeech.trim()
+        ? primaryMeaning.partOfSpeech.trim().toLowerCase()
+        : 'noun';
+
+    let defText = '';
+    const examples: string[] = [];
+
+    for (const m of meanings) {
+      const defs = Array.isArray(m.definitions) ? m.definitions : [];
+      for (const d of defs) {
+        if (!defText && typeof d.definition === 'string' && d.definition.trim()) {
+          defText = d.definition.trim();
+        }
+        if (typeof d.example === 'string' && d.example.trim().length > 5) {
+          examples.push(d.example.trim());
+        }
+      }
+    }
+
+    if (!defText && !ukIpa) return null;
+
+    const grammarTag =
+      pos === 'verb'
+        ? '[transitive, intransitive]'
+        : pos === 'adjective'
+        ? '[adjective]'
+        : pos === 'adverb'
+        ? '[adverb]'
+        : '[countable, uncountable]';
+
+    return {
+      ukIpa,
+      usIpa,
+      ukAudio,
+      usAudio,
+      pos,
+      grammarTag,
+      defText,
+      examples: examples.slice(0, 6),
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function fetchDictionaryOnlineBySource(
+  word: string,
+  preferredSourceId: DictionarySourceId
+): Promise<OnlineDictionaryResult | null> {
+  const fetcherMap: Record<DictionarySourceId, (w: string) => Promise<OnlineDictionaryResult | null>> = {
+    cambridge: fetchCambridgeDictionaryOnline,
+    oxford: fetchOxfordDictionaryOnline,
+    ldoce: fetchLongmanDictionaryOnline,
+  };
+
+  const order: DictionarySourceId[] = [
+    preferredSourceId,
+    ...(['cambridge', 'oxford', 'ldoce'] as DictionarySourceId[]).filter(
+      (id) => id !== preferredSourceId
+    ),
+  ];
+
+  let scraperResult: OnlineDictionaryResult | null = null;
+  for (const id of order) {
+    const result = await fetcherMap[id](word);
+    if (result) {
+      scraperResult = result;
+      break;
+    }
+  }
+
+  // If scraper got partial data (e.g. missing definition or examples), or returned null, query dictionaryapi.dev
+  if (!scraperResult || !scraperResult.defText || scraperResult.examples.length === 0) {
+    const apiDev = await fetchDictionaryApiDevFallback(word);
+    if (scraperResult) {
+      if (apiDev) {
+        if (!scraperResult.defText && apiDev.defText) scraperResult.defText = apiDev.defText;
+        if (!scraperResult.pos && apiDev.pos) scraperResult.pos = apiDev.pos;
+        if (!scraperResult.ukIpa && apiDev.ukIpa) scraperResult.ukIpa = apiDev.ukIpa;
+        if (!scraperResult.usIpa && apiDev.usIpa) scraperResult.usIpa = apiDev.usIpa;
+        if (!scraperResult.ukAudio && apiDev.ukAudio) scraperResult.ukAudio = apiDev.ukAudio;
+        if (!scraperResult.usAudio && apiDev.usAudio) scraperResult.usAudio = apiDev.usAudio;
+        if (scraperResult.examples.length === 0 && apiDev.examples.length > 0) {
+          scraperResult.examples = apiDev.examples;
+        }
+      }
+      return scraperResult;
+    }
+
+    if (apiDev) {
+      return {
+        sourceId: preferredSourceId,
+        keyword: word,
+        ukIpa: apiDev.ukIpa,
+        usIpa: apiDev.usIpa,
+        ukAudio: apiDev.ukAudio,
+        usAudio: apiDev.usAudio,
+        pos: apiDev.pos,
+        grammarTag: apiDev.grammarTag,
+        defText: apiDev.defText,
+        examples: apiDev.examples,
+        sourceUrl: DICTIONARY_SOURCES[preferredSourceId].buildEntryUrl(word),
+        isGenericFallback: true,
+      };
+    }
+  }
+
+  return scraperResult;
+}
+
 app.get('/api/health', (_req: Request, res: Response) => {
   const apiKey = (process.env.GEMINI_API_KEY || '').trim();
   const hasValidKey = apiKey.startsWith('AIza') && apiKey.length >= 30;
@@ -127,6 +509,9 @@ app.get('/api/health', (_req: Request, res: Response) => {
 
 app.get('/api/dictionary-ipa', async (req: Request, res: Response) => {
   const word = (req.query.word as string || '').trim().toLowerCase();
+  const sourceParam = (req.query.source as string) || '';
+  const sourceId = resolveDictionarySourceId(sourceParam);
+
   if (!word) {
     return res.status(400).json({ error: 'Thiếu tham số word' });
   }
@@ -134,64 +519,56 @@ app.get('/api/dictionary-ipa', async (req: Request, res: Response) => {
   try {
     const details = deriveIPADetails(word);
 
-    // 1. First priority: Fetch live directly from https://dictionary.cambridge.org/
-    const cambridgeLive = await fetchCambridgeDictionaryOnline(word);
-    if (cambridgeLive) {
-      if (cambridgeLive.ukIpa) {
-        details.cambridge.uk = cambridgeLive.ukIpa;
-        details.oxford.uk = cambridgeLive.ukIpa.replace(/\./g, '');
-        details.longman.uk = cambridgeLive.ukIpa.replace(/\./g, '');
-      }
-      if (cambridgeLive.usIpa) {
-        details.cambridge.us = cambridgeLive.usIpa;
-        details.oxford.us = cambridgeLive.usIpa.replace(/\./g, '');
-        details.longman.us = cambridgeLive.usIpa.replace(/\./g, '');
-      }
-      if (cambridgeLive.ukAudio) {
-        details.audioUrlUk = cambridgeLive.ukAudio;
-        details.cambridge.audioUk = cambridgeLive.ukAudio;
-      }
-      if (cambridgeLive.usAudio) {
-        details.audioUrlUs = cambridgeLive.usAudio;
-        details.cambridge.audioUs = cambridgeLive.usAudio;
-      }
-      (details as any).sourceUrl = cambridgeLive.sourceUrl;
-      (details as any).defText = cambridgeLive.defText;
-      (details as any).grammarTag = cambridgeLive.grammarTag;
-      return res.json(details);
-    }
-
-    // 2. Fallback: Try fetching public audio recordings
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 1800);
-      const onlineRes = await fetch(
-        `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`,
-        { signal: controller.signal }
-      );
-      clearTimeout(timeout);
-
-      if (onlineRes.ok) {
-        const data = await onlineRes.json();
-        if (Array.isArray(data) && data[0] && Array.isArray(data[0].phonetics)) {
-          for (const p of data[0].phonetics) {
-            if (p.audio) {
-              if (p.audio.includes('-uk') || p.audio.includes('en-uk')) {
-                details.audioUrlUk = p.audio;
-                details.cambridge.audioUk = p.audio;
-              } else if (p.audio.includes('-us') || p.audio.includes('en-us') || !details.audioUrlUs) {
-                details.audioUrlUs = p.audio;
-                details.cambridge.audioUs = p.audio;
-              }
-            }
-          }
+    // 1. Fetch live directly from the selected dictionary source (Cambridge / Oxford / Longman + dictionaryapi.dev fallback)
+    const liveOnline = await fetchDictionaryOnlineBySource(word, sourceId);
+    if (liveOnline) {
+      if (liveOnline.sourceId === 'cambridge') {
+        if (liveOnline.ukIpa) details.cambridge.uk = liveOnline.ukIpa;
+        if (liveOnline.usIpa) details.cambridge.us = liveOnline.usIpa;
+        if (liveOnline.ukAudio) details.cambridge.audioUk = liveOnline.ukAudio;
+        if (liveOnline.usAudio) details.cambridge.audioUs = liveOnline.usAudio;
+      } else if (liveOnline.sourceId === 'oxford') {
+        if (liveOnline.ukIpa) details.oxford.uk = liveOnline.ukIpa;
+        if (liveOnline.usIpa) details.oxford.us = liveOnline.usIpa;
+        if (liveOnline.ukAudio) details.oxford.audioUk = liveOnline.ukAudio;
+        if (liveOnline.usAudio) details.oxford.audioUs = liveOnline.usAudio;
+      } else if (liveOnline.sourceId === 'ldoce') {
+        if (liveOnline.ukIpa) details.longman.uk = liveOnline.ukIpa;
+        if (liveOnline.usIpa) details.longman.us = liveOnline.usIpa;
+        if (liveOnline.syllables) {
+          details.longman.syllables = liveOnline.syllables;
+          details.syllables = liveOnline.syllables;
         }
+        if (liveOnline.ukAudio) details.longman.audioUk = liveOnline.ukAudio;
+        if (liveOnline.usAudio) details.longman.audioUs = liveOnline.usAudio;
       }
-    } catch {
-      // Ignore network timeout
+
+      if (liveOnline.ukAudio) {
+        details.audioUrlUk = liveOnline.ukAudio;
+      }
+      if (liveOnline.usAudio) {
+        details.audioUrlUs = liveOnline.usAudio;
+      }
+      return res.json({
+        ...details,
+        keyword: word,
+        pos: liveOnline.pos,
+        grammarTag: liveOnline.grammarTag,
+        defText: liveOnline.defText,
+        examples: liveOnline.examples,
+        sourceUrl: liveOnline.sourceUrl,
+        activeSourceId: liveOnline.sourceId,
+        isOnlineLive: true,
+      });
     }
 
-    return res.json(details);
+    return res.json({
+      ...details,
+      keyword: word,
+      sourceUrl: DICTIONARY_SOURCES[sourceId].buildEntryUrl(word),
+      activeSourceId: sourceId,
+      isOnlineLive: false,
+    });
   } catch (err: any) {
     return res.status(500).json({ error: err.message || 'Lỗi tra cứu IPA' });
   }
@@ -209,6 +586,7 @@ app.post('/api/generate-exercise', async (req: Request, res: Response) => {
       questionCount = 2,
       startQuestionNum = 35,
       maxWords = 3,
+      variationSeed = 0,
     }: GenerateRequest = req.body;
 
     if (!keyword || typeof keyword !== 'string' || keyword.trim() === '') {
@@ -216,24 +594,26 @@ app.post('/api/generate-exercise', async (req: Request, res: Response) => {
     }
 
     const cleanKeyword = keyword.trim().toLowerCase();
+    const sourceId = resolveDictionarySourceId(dictionarySource);
+    const sourceInfo = DICTIONARY_SOURCES[sourceId];
 
-    // 1. Fetch live dictionary entry directly from https://dictionary.cambridge.org/
-    const cambridgeOnline = await fetchCambridgeDictionaryOnline(cleanKeyword);
+    // 1. Fetch live dictionary entry directly from the chosen dictionary source
+    const liveOnline = await fetchDictionaryOnlineBySource(cleanKeyword, sourceId);
 
-    let cambridgeContext = '';
-    if (cambridgeOnline) {
-      cambridgeContext = `
-DỮ LIỆU GỐC TRA CỨU TRỰC TIẾP TỪ TRANG NGUỒN CHÍNH THỨC https://dictionary.cambridge.org/dictionary/english/${encodeURIComponent(cleanKeyword)}:
-- Headword: "${cambridgeOnline.keyword}"
-- Phiên âm chuẩn Cambridge UK: "${cambridgeOnline.ukIpa}"
-- Phiên âm chuẩn Cambridge US: "${cambridgeOnline.usIpa}"
-- Từ loại (Part of Speech): "${cambridgeOnline.pos}"
-- Nhãn ngữ pháp: "${cambridgeOnline.grammarTag}"
-- Định nghĩa gốc từ Cambridge: "${cambridgeOnline.defText}"
-- Các câu ví dụ gốc từ trang từ điển Cambridge:
-${cambridgeOnline.examples.map((ex) => `  * ${ex}`).join('\n')}
+    let dictionaryContext = '';
+    if (liveOnline) {
+      dictionaryContext = `
+DỮ LIỆU GỐC TRA CỨU TRỰC TIẾP TỪ TRANG NGUỒN CHÍNH THỨC ${liveOnline.sourceUrl} (${sourceInfo.name}):
+- Headword: "${liveOnline.keyword}"
+- Phiên âm chuẩn UK (${sourceInfo.shortName}): "${liveOnline.ukIpa}"
+- Phiên âm chuẩn US (${sourceInfo.shortName}): "${liveOnline.usIpa}"
+- Từ loại (Part of Speech): "${liveOnline.pos}"
+- Nhãn ngữ pháp: "${liveOnline.grammarTag}"
+- Định nghĩa gốc từ từ điển: "${liveOnline.defText}"
+- Các câu ví dụ gốc từ trang từ điển:
+${liveOnline.examples.map((ex) => `  * ${ex}`).join('\n')}
 
-LƯU Ý QUAN TRỌNG: Hãy sử dụng CHÍNH XÁC phiên âm IPA của Cambridge "${cambridgeOnline.ukIpa}" và định nghĩa gốc này. Trích xuất các cụm từ (collocations) từ các ví dụ trên để làm đáp án chuẩn cho học sinh.
+LƯU Ý QUAN TRỌNG: Hãy sử dụng CHÍNH XÁC phiên âm IPA "${liveOnline.ukIpa}" và định nghĩa gốc này. Trích xuất các cụm từ (collocations) từ các ví dụ trên để làm đáp án chuẩn cho học sinh.
 `;
     }
 
@@ -263,19 +643,19 @@ LƯU Ý QUAN TRỌNG: Hãy sử dụng CHÍNH XÁC phiên âm IPA của Cambridg
     const prompt = `
 Bạn là chuyên gia khảo thí và giáo viên Tiếng Anh nhiều kinh nghiệm chuyên luyện thi tuyển sinh vào lớp 10 và giảng dạy giáo trình Global Success (Bộ GD&ĐT) khối ${grade}.
 Nhiệm vụ: Tạo một câu hỏi bài tập tra cứu từ điển dạng "Dictionary Entry Sentence Completion" (như đề thi tuyển sinh lớp 10 TP.HCM / đề kiểm tra định kỳ Global Success) cho từ khóa: "${cleanKeyword}".
-Trang nguồn tra cứu mục từ điển: "https://dictionary.cambridge.org/"
+Trang nguồn tra cứu mục từ điển: "${sourceInfo.baseUrl}" (${sourceInfo.name})
 Chủ đề liên quan: Tiếng Anh ${grade} - Unit ${unit}: ${unitTitle}.
-${cambridgeContext}
+${dictionaryContext}
 
 ${gradeDifficultyGuidelines[grade] || gradeDifficultyGuidelines[8]}
 
 YÊU CẦU ĐẶC BIỆT THEO CHUẨN ĐỀ THI:
-1. Tra cứu định nghĩa và phiên âm chuẩn từ điển Cambridge (Cambridge Advanced Learner's Dictionary - CALD - https://dictionary.cambridge.org/):
+1. Tra cứu định nghĩa và phiên âm chuẩn từ điển ${sourceInfo.name} (${sourceInfo.baseUrl}):
    - Headword: "${cleanKeyword}"
-   - IPA chuẩn xác theo từ điển Cambridge (CALD) có dấu chấm phân chia âm tiết đầy đủ (ví dụ: ${cambridgeOnline?.ukIpa || '/ˈhæb.ɪt/'})
-   - Từ loại chính xác (${cambridgeOnline?.pos || 'noun, verb, adjective, etc.'})
-   - Định nghĩa xúc tích, chuẩn xác, có ghi nhãn ngữ pháp như ${cambridgeOnline?.grammarTag || '[countable], [uncountable], [transitive]'}, etc.
-   - Danh sách 4 đến 5 câu ví dụ thực tế chuẩn từ điển Cambridge.
+   - IPA chuẩn xác theo ${sourceInfo.shortName} (ví dụ: ${liveOnline?.ukIpa || '/ˈhæb.ɪt/'})
+   - Từ loại chính xác (${liveOnline?.pos || 'noun, verb, adjective, etc.'})
+   - Định nghĩa xúc tích, chuẩn xác, có ghi nhãn ngữ pháp như ${liveOnline?.grammarTag || '[countable], [uncountable], [transitive]'}, etc.
+   - Danh sách 4 đến 5 câu ví dụ thực tế chuẩn từ điển ${sourceInfo.shortName}.
    - Trong mỗi câu ví dụ, hãy chỉ rõ cụm từ/collocation quan trọng (độ dài 2-3 từ) để làm đáp án tiềm năng. Ví dụ với "habit": "eating habits", "develop the habit", "break the habit", "let it become a habit".
 
 2. Tạo đúng ${questionCount} câu hỏi bài tập điền khuyết:
@@ -286,6 +666,7 @@ YÊU CẦU ĐẶC BIỆT THEO CHUẨN ĐỀ THI:
    - Chỗ trống phải được điền CHÍNH XÁC bằng một cụm từ (phrases) xuất hiện in đậm (boldPhrase) trong các câu ví dụ của bảng từ điển trên.
    - Đáp án không được vượt quá ${maxWords} từ ("Do not use more than ${maxWords === 3 ? 'THREE' : maxWords} words for each phrase").
    - Cung cấp dịch nghĩa tiếng Việt chi tiết và lời giải thích ngắn gọn, sư phạm cho giáo viên và học sinh.
+${variationSeed > 0 ? `\n3. YÊU CẦU ĐỔI BỘ CÂU HỎI MỚI (Biến thể số ${variationSeed + 1}):\n   - Tạo các câu hỏi hoàn toàn mới với ngữ cảnh, cấu trúc câu và cụm collocation mục tiêu khác với những lần tạo trước cho từ "${cleanKeyword}".` : ''}
 `;
 
     let response: any = null;
@@ -299,13 +680,13 @@ YÊU CẦU ĐẶC BIỆT THEO CHUẨN ĐỀ THI:
           model: 'gemini-3.8-flash',
           contents: prompt,
           config: {
-            systemInstruction: `You are a professional ESL test designer and senior English teacher specializing in Vietnam's Ministry of Education "Global Success" curriculum (Grades 6-9) and Grade 10 High School Entrance Exams (Tuyển sinh lớp 10). Return strictly valid JSON conforming to the requested schema. Ensure authentic Cambridge Advanced Learner's Dictionary (CALD) style with syllable-divided IPA transcription and high pedagogical precision.`,
+            systemInstruction: `You are a professional ESL test designer and senior English teacher specializing in Vietnam's Ministry of Education "Global Success" curriculum (Grades 6-9) and Grade 10 High School Entrance Exams (Tuyển sinh lớp 10). Return strictly valid JSON conforming to the requested schema. Ensure authentic ${sourceInfo.name} (${sourceInfo.domain}) style IPA transcription and high pedagogical precision.`,
             responseMimeType: 'application/json',
             responseSchema: {
               type: Type.OBJECT,
               properties: {
                 keyword: { type: Type.STRING },
-                ipa: { type: Type.STRING, description: 'Phonetic transcription according to Cambridge Dictionary standard with syllable dots, e.g. /ˈhæb.ɪt/' },
+                ipa: { type: Type.STRING, description: `Phonetic transcription according to ${sourceInfo.name} standard` },
                 partOfSpeech: { type: Type.STRING, description: 'e.g. noun, verb, adjective' },
                 dictionarySource: { type: Type.STRING },
                 definitionNumber: { type: Type.STRING, description: 'e.g. 1.' },
@@ -384,7 +765,8 @@ YÊU CẦU ĐẶC BIỆT THEO CHUẨN ĐỀ THI:
         questionCount,
         startQuestionNum,
         maxWords,
-        cambridgeOnline
+        liveOnline,
+        variationSeed
       );
       return res.json(fallbackData);
     }
@@ -392,25 +774,49 @@ YÊU CẦU ĐẶC BIỆT THEO CHUẨN ĐỀ THI:
     const parsedData = JSON.parse(response.text);
     const ipaDetails = deriveIPADetails(cleanKeyword, parsedData.ipa);
 
-    if (cambridgeOnline) {
-      parsedData.ipa = cambridgeOnline.ukIpa;
-      ipaDetails.cambridge.uk = cambridgeOnline.ukIpa;
-      ipaDetails.cambridge.us = cambridgeOnline.usIpa;
-      if (cambridgeOnline.ukAudio) {
-        ipaDetails.audioUrlUk = cambridgeOnline.ukAudio;
-        ipaDetails.cambridge.audioUk = cambridgeOnline.ukAudio;
+    if (liveOnline) {
+      parsedData.ipa = liveOnline.ukIpa || parsedData.ipa;
+      if (liveOnline.sourceId === 'cambridge') {
+        if (liveOnline.ukIpa) ipaDetails.cambridge.uk = liveOnline.ukIpa;
+        if (liveOnline.usIpa) ipaDetails.cambridge.us = liveOnline.usIpa;
+        if (liveOnline.ukAudio) ipaDetails.cambridge.audioUk = liveOnline.ukAudio;
+        if (liveOnline.usAudio) ipaDetails.cambridge.audioUs = liveOnline.usAudio;
+      } else if (liveOnline.sourceId === 'oxford') {
+        if (liveOnline.ukIpa) ipaDetails.oxford.uk = liveOnline.ukIpa;
+        if (liveOnline.usIpa) ipaDetails.oxford.us = liveOnline.usIpa;
+        if (liveOnline.ukAudio) ipaDetails.oxford.audioUk = liveOnline.ukAudio;
+        if (liveOnline.usAudio) ipaDetails.oxford.audioUs = liveOnline.usAudio;
+      } else if (liveOnline.sourceId === 'ldoce') {
+        if (liveOnline.ukIpa) ipaDetails.longman.uk = liveOnline.ukIpa;
+        if (liveOnline.usIpa) ipaDetails.longman.us = liveOnline.usIpa;
+        if (liveOnline.syllables) {
+          ipaDetails.longman.syllables = liveOnline.syllables;
+          ipaDetails.syllables = liveOnline.syllables;
+        }
+        if (liveOnline.ukAudio) ipaDetails.longman.audioUk = liveOnline.ukAudio;
+        if (liveOnline.usAudio) ipaDetails.longman.audioUs = liveOnline.usAudio;
       }
-      if (cambridgeOnline.usAudio) {
-        ipaDetails.audioUrlUs = cambridgeOnline.usAudio;
-        ipaDetails.cambridge.audioUs = cambridgeOnline.usAudio;
+
+      if (liveOnline.ukAudio) {
+        ipaDetails.audioUrlUk = liveOnline.ukAudio;
+      }
+      if (liveOnline.usAudio) {
+        ipaDetails.audioUrlUs = liveOnline.usAudio;
       }
     } else {
-      parsedData.ipa = ipaDetails.cambridge.uk;
+      parsedData.ipa =
+        sourceId === 'oxford'
+          ? ipaDetails.oxford.uk
+          : sourceId === 'ldoce'
+          ? ipaDetails.longman.uk
+          : ipaDetails.cambridge.uk;
     }
 
     parsedData.ipaDetails = ipaDetails;
-    parsedData.cambridgeUrl = `https://dictionary.cambridge.org/dictionary/english/${encodeURIComponent(cleanKeyword)}`;
-    parsedData.dictionarySource = "Cambridge Advanced Learner's Dictionary (dictionary.cambridge.org)";
+    const entryUrl = liveOnline?.sourceUrl || sourceInfo.buildEntryUrl(cleanKeyword);
+    parsedData.sourceUrl = entryUrl;
+    parsedData.cambridgeUrl = DICTIONARY_SOURCES.cambridge.buildEntryUrl(cleanKeyword);
+    parsedData.dictionarySource = `${sourceInfo.name} (${sourceInfo.domain})`;
     return res.json(parsedData);
   } catch {
     try {
@@ -423,7 +829,9 @@ YÊU CẦU ĐẶC BIỆT THEO CHUẨN ĐỀ THI:
         req.body.dictionarySource || "Cambridge Advanced Learner's Dictionary",
         req.body.questionCount || 2,
         req.body.startQuestionNum || 35,
-        req.body.maxWords || 3
+        req.body.maxWords || 3,
+        null,
+        req.body.variationSeed || 0
       );
       return res.json(fallbackData);
     } catch (fallbackErr: any) {
@@ -444,9 +852,13 @@ function createCurriculumFallback(
   questionCount: number,
   startNum: number,
   maxWords: number,
-  cambridgeOnline?: CambridgeOnlineResult | null
+  liveOnline?: OnlineDictionaryResult | null,
+  variationSeed: number = 0
 ) {
-  // Delegate to generateExerciseForKeyword for 100% semantic and grammatical precision
+  const sourceId = resolveDictionarySourceId(source);
+  const sourceInfo = DICTIONARY_SOURCES[sourceId];
+
+  // Delegate to generateExerciseForKeyword for 100% semantic, topic-aware, and grammatical precision
   const exercise = generateExerciseForKeyword(
     word,
     grade,
@@ -454,45 +866,79 @@ function createCurriculumFallback(
     unitTitle,
     questionCount,
     startNum,
-    maxWords
+    maxWords,
+    source,
+    liveOnline
+      ? {
+          examples: liveOnline.examples,
+          examplePairs: liveOnline.examplePairs,
+          pos: liveOnline.pos,
+          grammarTag: liveOnline.grammarTag,
+          defText: liveOnline.defText,
+        }
+      : undefined,
+    variationSeed
   );
 
-  // If live Cambridge Online data was successfully retrieved, enrich exercise
-  if (cambridgeOnline) {
-    if (cambridgeOnline.ukIpa) {
-      exercise.ipa = cambridgeOnline.ukIpa;
+  // If live online dictionary data was successfully retrieved, enrich exercise
+  if (liveOnline) {
+    if (liveOnline.ukIpa) {
+      exercise.ipa = liveOnline.ukIpa;
       if (exercise.ipaDetails) {
-        exercise.ipaDetails.cambridge.uk = cambridgeOnline.ukIpa;
-        exercise.ipaDetails.oxford.uk = cambridgeOnline.ukIpa.replace(/\./g, '');
-        exercise.ipaDetails.longman.uk = cambridgeOnline.ukIpa.replace(/\./g, '');
+        if (liveOnline.sourceId === 'cambridge') {
+          exercise.ipaDetails.cambridge.uk = liveOnline.ukIpa;
+        } else if (liveOnline.sourceId === 'oxford') {
+          exercise.ipaDetails.oxford.uk = liveOnline.ukIpa;
+        } else if (liveOnline.sourceId === 'ldoce') {
+          exercise.ipaDetails.longman.uk = liveOnline.ukIpa;
+          if (liveOnline.syllables) {
+            exercise.ipaDetails.longman.syllables = liveOnline.syllables;
+            exercise.ipaDetails.syllables = liveOnline.syllables;
+          }
+        }
       }
     }
-    if (cambridgeOnline.usIpa && exercise.ipaDetails) {
-      exercise.ipaDetails.cambridge.us = cambridgeOnline.usIpa;
-      exercise.ipaDetails.oxford.us = cambridgeOnline.usIpa.replace(/\./g, '');
-      exercise.ipaDetails.longman.us = cambridgeOnline.usIpa.replace(/\./g, '');
+    if (liveOnline.usIpa && exercise.ipaDetails) {
+      if (liveOnline.sourceId === 'cambridge') {
+        exercise.ipaDetails.cambridge.us = liveOnline.usIpa;
+      } else if (liveOnline.sourceId === 'oxford') {
+        exercise.ipaDetails.oxford.us = liveOnline.usIpa;
+      } else if (liveOnline.sourceId === 'ldoce') {
+        exercise.ipaDetails.longman.us = liveOnline.usIpa;
+      }
     }
-    if (cambridgeOnline.ukAudio && exercise.ipaDetails) {
-      exercise.ipaDetails.audioUrlUk = cambridgeOnline.ukAudio;
-      exercise.ipaDetails.cambridge.audioUk = cambridgeOnline.ukAudio;
+    if (liveOnline.ukAudio && exercise.ipaDetails) {
+      exercise.ipaDetails.audioUrlUk = liveOnline.ukAudio;
+      if (liveOnline.sourceId === 'cambridge') exercise.ipaDetails.cambridge.audioUk = liveOnline.ukAudio;
+      if (liveOnline.sourceId === 'oxford') exercise.ipaDetails.oxford.audioUk = liveOnline.ukAudio;
+      if (liveOnline.sourceId === 'ldoce') exercise.ipaDetails.longman.audioUk = liveOnline.ukAudio;
     }
-    if (cambridgeOnline.usAudio && exercise.ipaDetails) {
-      exercise.ipaDetails.audioUrlUs = cambridgeOnline.usAudio;
-      exercise.ipaDetails.cambridge.audioUs = cambridgeOnline.usAudio;
+    if (liveOnline.usAudio && exercise.ipaDetails) {
+      exercise.ipaDetails.audioUrlUs = liveOnline.usAudio;
+      if (liveOnline.sourceId === 'cambridge') exercise.ipaDetails.cambridge.audioUs = liveOnline.usAudio;
+      if (liveOnline.sourceId === 'oxford') exercise.ipaDetails.oxford.audioUs = liveOnline.usAudio;
+      if (liveOnline.sourceId === 'ldoce') exercise.ipaDetails.longman.audioUs = liveOnline.usAudio;
     }
-    if (cambridgeOnline.pos) {
-      exercise.partOfSpeech = cambridgeOnline.pos;
+    if (liveOnline.pos && !liveOnline.isGenericFallback) {
+      exercise.partOfSpeech = liveOnline.pos;
     }
-    if (cambridgeOnline.grammarTag) {
-      exercise.grammarTag = cambridgeOnline.grammarTag;
+    if (liveOnline.grammarTag && !liveOnline.isGenericFallback) {
+      exercise.grammarTag = liveOnline.grammarTag;
     }
-    if (cambridgeOnline.defText && cambridgeOnline.defText.length > 8) {
-      exercise.definitionText = cambridgeOnline.defText;
+    if (liveOnline.defText && liveOnline.defText.length > 8) {
+      // Only overwrite curated definition if fetched live from Cambridge/Oxford/Longman, or if non-curated
+      if (!liveOnline.isGenericFallback || !exercise.definitionText || exercise.definitionText.includes('used ')) {
+        exercise.definitionText = liveOnline.defText;
+      }
     }
-    if (cambridgeOnline.sourceUrl) {
-      exercise.cambridgeUrl = cambridgeOnline.sourceUrl;
+    if (liveOnline.sourceUrl) {
+      exercise.sourceUrl = liveOnline.sourceUrl;
     }
   }
+
+  exercise.dictionarySource = `${sourceInfo.name} (${sourceInfo.domain})`;
+  exercise.sourceUrl = exercise.sourceUrl || sourceInfo.buildEntryUrl(word);
+  exercise.cambridgeUrl = DICTIONARY_SOURCES.cambridge.buildEntryUrl(word);
 
   return exercise;
 }

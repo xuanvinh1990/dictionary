@@ -1,15 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
-  BookOpen,
-  Sparkles,
   Download,
   AlertCircle,
   FileCheck2,
   Image as ImageIcon,
-  CheckCircle,
   X,
   ExternalLink,
-  ChevronRight,
 } from 'lucide-react';
 import { Header } from './components/Header';
 import { CurriculumSelector } from './components/CurriculumSelector';
@@ -22,14 +18,13 @@ import {
   PRESET_EXERCISES,
 } from './data/globalSuccessCurriculum';
 import { exportExerciseToDocx } from './utils/docxExport';
-import { findOxfordWord } from './data/oxfordVocabulary3000';
-import { deriveIPADetails } from './utils/ipaDictionaryApi';
 import { generateExerciseForKeyword } from './utils/exerciseGenerator';
 
 export default function App() {
-  const [selectedGrade, setSelectedGrade] = useState<number>(8);
+  const [selectedGrade, setSelectedGrade] = useState<number>(9);
   const [selectedUnit, setSelectedUnit] = useState<number>(6);
   const [keyword, setKeyword] = useState<string>('habit');
+  const [hasCustomKeyword, setHasCustomKeyword] = useState<boolean>(false);
   const [dictionarySource, setDictionarySource] = useState<string>(
     "Cambridge Advanced Learner's Dictionary"
   );
@@ -39,11 +34,23 @@ export default function App() {
 
   const [currentExercise, setCurrentExercise] =
     useState<DictionaryExercise>(SAMPLE_HABIT_EXERCISE);
+  const [variationSeed, setVariationSeed] = useState<number>(0);
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showOriginalImageModal, setShowOriginalImageModal] =
     useState<boolean>(false);
+
+  const latestRequestIdRef = useRef<number>(0);
+  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (typingTimerRef.current) {
+        clearTimeout(typingTimerRef.current);
+      }
+    };
+  }, []);
 
   // Current curriculum unit metadata
   const currentGradeData =
@@ -53,17 +60,30 @@ export default function App() {
     currentGradeData.units.find((u) => u.unit === selectedUnit) ||
     currentGradeData.units[5];
 
-  // Core generator: updates questions INSTANTLY for the chosen keyword and grade!
+  // Core generator: updates questions INSTANTLY for the chosen keyword, grade, and dictionary source!
   const executeGenerate = async (
     targetKeyword: string,
     targetGrade: number,
     targetUnit: number,
-    targetUnitTitle?: string
+    targetUnitTitle?: string,
+    targetDictionarySource?: string,
+    targetVariationSeed: number = 0,
+    overrides?: {
+      questionCount?: number;
+      startQuestionNum?: number;
+      maxWords?: number;
+    }
   ) => {
     const cleanWord = targetKeyword.trim().toLowerCase();
     if (!cleanWord) return;
+    const activeSource = targetDictionarySource || dictionarySource;
+    const activeCount = overrides?.questionCount ?? questionCount;
+    const activeStart = overrides?.startQuestionNum ?? startQuestionNum;
+    const activeMaxWords = overrides?.maxWords ?? maxWords;
 
-    // 1. Instant 0ms update: generate pristine Cambridge dictionary entry and questions
+    const reqId = ++latestRequestIdRef.current;
+
+    // 1. Instant 0ms update: generate pristine dictionary entry and questions
     const gradeObj =
       GLOBAL_SUCCESS_CURRICULUM.find((g) => g.grade === targetGrade) ||
       GLOBAL_SUCCESS_CURRICULUM[0];
@@ -76,14 +96,17 @@ export default function App() {
       targetGrade,
       targetUnit,
       resolvedTitle,
-      questionCount,
-      startQuestionNum,
-      maxWords
+      activeCount,
+      activeStart,
+      activeMaxWords,
+      activeSource,
+      undefined,
+      targetVariationSeed
     );
     setCurrentExercise(instantExercise);
     setErrorMessage(null);
 
-    // 2. Asynchronously request backend for live Cambridge Online audio & enrichment
+    // 2. Asynchronously request backend for live Online Dictionary definition, POS, IPA, audio & enrichment
     setIsGenerating(true);
     try {
       const response = await fetch('/api/generate-exercise', {
@@ -94,50 +117,95 @@ export default function App() {
           grade: targetGrade,
           unit: targetUnit,
           unitTitle: resolvedTitle,
-          dictionarySource,
-          questionCount,
-          startQuestionNum,
-          maxWords,
+          dictionarySource: activeSource,
+          questionCount: activeCount,
+          startQuestionNum: activeStart,
+          maxWords: activeMaxWords,
+          variationSeed: targetVariationSeed,
         }),
       });
 
-      if (response.ok) {
+      if (response.ok && reqId === latestRequestIdRef.current) {
         const enrichedData: DictionaryExercise = await response.json();
         setCurrentExercise(enrichedData);
       }
     } catch {
       // Offline fallback: instant exercise is already active
     } finally {
-      setIsGenerating(false);
+      if (reqId === latestRequestIdRef.current) {
+        setIsGenerating(false);
+      }
     }
+  };
+
+  // Auto-lookup online when teacher types a keyword (with 550ms debounce)
+  const handleUserTypeKeyword = (newKeyword: string) => {
+    setKeyword(newKeyword);
+    setHasCustomKeyword(true);
+    if (typingTimerRef.current) {
+      clearTimeout(typingTimerRef.current);
+    }
+    const clean = newKeyword.trim().toLowerCase();
+    if (clean.length < 2) return;
+
+    typingTimerRef.current = setTimeout(() => {
+      setVariationSeed(0);
+      executeGenerate(
+        clean,
+        selectedGrade,
+        selectedUnit,
+        currentUnitData.title,
+        dictionarySource,
+        0
+      );
+    }, 550);
   };
 
   // Handle Load Preset / Sample Image
   const handleLoadSample = () => {
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    setHasCustomKeyword(false);
     setSelectedGrade(9);
     setSelectedUnit(6);
     setKeyword('habit');
     setQuestionCount(2);
     setStartQuestionNum(35);
     setMaxWords(3);
-    executeGenerate('habit', 9, 6, 'Lifestyles');
+    setVariationSeed(0);
+    const grade9Obj =
+      GLOBAL_SUCCESS_CURRICULUM.find((g) => g.grade === 9) || GLOBAL_SUCCESS_CURRICULUM[3];
+    const unit6Obj = grade9Obj.units.find((u) => u.unit === 6) || grade9Obj.units[5];
+    executeGenerate('habit', 9, 6, unit6Obj.title, dictionarySource, 0, {
+      questionCount: 2,
+      startQuestionNum: 35,
+      maxWords: 3,
+    });
   };
 
-  // Handle Select Grade: updates grade, unit 1, picks 1st word, and REGENERATES IMMEDIATELY!
+  // Handle Select Grade: keeps user's typed keyword (if custom) to test across grades, or loads Unit 1's 1st word
   const handleSelectGrade = (newGrade: number) => {
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
     setSelectedGrade(newGrade);
     const gradeObj =
       GLOBAL_SUCCESS_CURRICULUM.find((g) => g.grade === newGrade) ||
       GLOBAL_SUCCESS_CURRICULUM[0];
     const unit1 = gradeObj.units[0];
     setSelectedUnit(unit1.unit);
-    const newKw = unit1.suggestedKeywords[0]?.word || 'habit';
-    setKeyword(newKw);
-    executeGenerate(newKw, newGrade, unit1.unit, unit1.title);
+    const shouldKeepCustom = hasCustomKeyword && keyword.trim().length >= 2;
+    const newKw = shouldKeepCustom
+      ? keyword.trim()
+      : unit1.suggestedKeywords[0]?.word || 'habit';
+    if (!shouldKeepCustom) {
+      setKeyword(newKw);
+    }
+    setVariationSeed(0);
+    executeGenerate(newKw, newGrade, unit1.unit, unit1.title, undefined, 0);
   };
 
   // Handle Select Unit: updates unit, picks 1st word, and REGENERATES IMMEDIATELY!
   const handleSelectUnit = (unitNum: number) => {
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    setHasCustomKeyword(false);
     setSelectedUnit(unitNum);
     const gradeObj =
       GLOBAL_SUCCESS_CURRICULUM.find((g) => g.grade === selectedGrade) ||
@@ -146,7 +214,8 @@ export default function App() {
       gradeObj.units.find((u) => u.unit === unitNum) || gradeObj.units[0];
     const newKw = unitObj.suggestedKeywords[0]?.word || keyword;
     setKeyword(newKw);
-    executeGenerate(newKw, selectedGrade, unitNum, unitObj.title);
+    setVariationSeed(0);
+    executeGenerate(newKw, selectedGrade, unitNum, unitObj.title, undefined, 0);
   };
 
   // Handle Direct Keyword Click (from chips, Oxford topics, or autocomplete)
@@ -155,6 +224,8 @@ export default function App() {
     optGrade?: number,
     optUnit?: number
   ) => {
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    setHasCustomKeyword(false);
     const targetGrade = optGrade || selectedGrade;
     const targetUnit = optUnit || selectedUnit;
     if (optGrade && optGrade !== selectedGrade) {
@@ -164,29 +235,107 @@ export default function App() {
       setSelectedUnit(optUnit);
     }
     setKeyword(word);
-    executeGenerate(word, targetGrade, targetUnit);
+    setVariationSeed(0);
+    executeGenerate(word, targetGrade, targetUnit, undefined, undefined, 0);
   };
 
   // Handle Select Preset quick button
   const handleSelectPresetWord = (presetKey: string) => {
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
     const item = PRESET_EXERCISES[presetKey];
     if (item) {
+      setHasCustomKeyword(false);
       setSelectedGrade(item.grade);
       setSelectedUnit(item.unit);
       setKeyword(item.exercise.keyword);
-      executeGenerate(item.exercise.keyword, item.grade, item.unit);
+      setVariationSeed(0);
+      executeGenerate(item.exercise.keyword, item.grade, item.unit, item.unitTitle, undefined, 0);
     }
   };
 
   // Generate Exercise on manual button press or search submit
   const handleGenerate = () => {
-    executeGenerate(keyword, selectedGrade, selectedUnit, currentUnitData.title);
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    setVariationSeed(0);
+    executeGenerate(keyword, selectedGrade, selectedUnit, currentUnitData.title, undefined, 0);
+  };
+
+  // Switch to a different set of questions for the current keyword
+  const handleSwitchQuestions = () => {
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    const activeKeyword = keyword.trim() || currentExercise.keyword;
+    if (!activeKeyword) return;
+    const nextSeed = variationSeed + 1;
+    setVariationSeed(nextSeed);
+    executeGenerate(
+      activeKeyword,
+      selectedGrade,
+      selectedUnit,
+      currentUnitData.title,
+      dictionarySource,
+      nextSeed
+    );
+  };
+
+  // Handle Dictionary Source change: updates state and regenerates immediately
+  const handleSelectDictionarySource = (newSource: string) => {
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    setDictionarySource(newSource);
+    setVariationSeed(0);
+    executeGenerate(
+      keyword,
+      selectedGrade,
+      selectedUnit,
+      currentUnitData.title,
+      newSource,
+      0
+    );
+  };
+
+  const handleChangeQuestionCount = (newCount: number) => {
+    setQuestionCount(newCount);
+    executeGenerate(
+      keyword,
+      selectedGrade,
+      selectedUnit,
+      currentUnitData.title,
+      dictionarySource,
+      variationSeed,
+      { questionCount: newCount }
+    );
+  };
+
+  const handleChangeStartQuestionNum = (newStart: number) => {
+    setStartQuestionNum(newStart);
+    executeGenerate(
+      keyword,
+      selectedGrade,
+      selectedUnit,
+      currentUnitData.title,
+      dictionarySource,
+      variationSeed,
+      { startQuestionNum: newStart }
+    );
+  };
+
+  const handleChangeMaxWords = (newMaxWords: number) => {
+    setMaxWords(newMaxWords);
+    executeGenerate(
+      keyword,
+      selectedGrade,
+      selectedUnit,
+      currentUnitData.title,
+      dictionarySource,
+      variationSeed,
+      { maxWords: newMaxWords }
+    );
   };
 
   // Handle Word .docx Export
   const handleExportDocx = async () => {
     if (!currentExercise) return;
     setIsExporting(true);
+    setErrorMessage(null);
     try {
       await exportExerciseToDocx(
         currentExercise,
@@ -196,7 +345,7 @@ export default function App() {
       );
     } catch (err) {
       console.error('Lỗi khi xuất Word docx:', err);
-      alert('Có lỗi khi tạo file Word. Vui lòng thử lại.');
+      setErrorMessage('Có lỗi khi tạo file Word (.docx). Vui lòng thử lại.');
     } finally {
       setIsExporting(false);
     }
@@ -224,7 +373,7 @@ export default function App() {
                 <span>•</span>
                 <span>Luyện thi vào lớp 10 THPT</span>
                 <span>•</span>
-                <span>Chuẩn Từ Điển Cambridge (CALD)</span>
+                <span>Cambridge • Oxford • Longman</span>
               </div>
               <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
                 Công Cụ Soạn Bài Tập Tra Cứu Từ Điển Tiếng Anh
@@ -300,16 +449,19 @@ export default function App() {
             onSelectUnit={handleSelectUnit}
             keyword={keyword}
             onChangeKeyword={setKeyword}
+            onUserTypeKeyword={handleUserTypeKeyword}
+            currentExercise={currentExercise}
             onSelectKeywordDirect={handleSelectKeywordDirect}
             dictionarySource={dictionarySource}
-            onChangeDictionarySource={setDictionarySource}
+            onChangeDictionarySource={handleSelectDictionarySource}
             questionCount={questionCount}
-            onChangeQuestionCount={setQuestionCount}
+            onChangeQuestionCount={handleChangeQuestionCount}
             startQuestionNum={startQuestionNum}
-            onChangeStartQuestionNum={setStartQuestionNum}
+            onChangeStartQuestionNum={handleChangeStartQuestionNum}
             maxWords={maxWords}
-            onChangeMaxWords={setMaxWords}
+            onChangeMaxWords={handleChangeMaxWords}
             onGenerate={handleGenerate}
+            onSwitchQuestions={handleSwitchQuestions}
             isGenerating={isGenerating}
             onLoadSample={handleLoadSample}
           />
@@ -321,7 +473,7 @@ export default function App() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
             {/* Left Column: Dictionary Card (5 cols on desktop) */}
             <div className="lg:col-span-5 space-y-4">
-              <DictionaryCard exercise={currentExercise} />
+              <DictionaryCard exercise={currentExercise} isLookingUp={isGenerating} />
 
               <div className="p-4 bg-white rounded-xl border border-slate-200 text-xs text-slate-600 space-y-2">
                 <div className="font-bold text-slate-800 flex items-center gap-1.5">
@@ -348,6 +500,8 @@ export default function App() {
                 exercise={currentExercise}
                 onExportDocx={handleExportDocx}
                 isExporting={isExporting}
+                onSwitchQuestions={handleSwitchQuestions}
+                isSwitchingQuestions={isGenerating}
                 grade={selectedGrade}
                 unit={selectedUnit}
                 unitTitle={currentUnitData.title}
@@ -388,14 +542,23 @@ export default function App() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-4 overflow-y-auto flex-1 flex flex-col items-center justify-center bg-slate-100">
+            <div className="p-4 overflow-y-auto flex-1 flex flex-col items-center justify-center bg-slate-100 gap-3">
               <img
                 src="/assets/aistudio/image_ffee9eb9.png"
                 alt="Đề thi thực tế - Dạng bài tra từ điển"
                 className="max-w-full rounded border border-slate-300 shadow-md object-contain"
               />
-              <p className="text-xs text-slate-500 mt-3 text-center">
-                Ứng dụng web đã tái lập chính xác 100% cấu trúc: Tiêu đề hướng dẫn (VI) - Bảng khung từ điển (Bordered Box) - Cụm từ in đậm - Hộp ANSWERS - Dòng điền từ có gạch chân.
+              <a
+                href="/assets/aistudio/Ca_u_Le__nh_Dictionary_6025b0b6.pdf"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-700 hover:text-blue-900 hover:underline"
+              >
+                <span>Mở tài liệu PDF đính kèm (Câu Lệnh Dictionary.pdf)</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+              <p className="text-xs text-slate-500 text-center">
+                Ứng dụng web tái lập chính xác 100% cấu trúc trong file đính kèm: Tiêu đề (VI) - Khung từ điển - Cụm từ in đậm - Hộp ANSWERS - Dòng điền từ có gạch chân.
               </p>
             </div>
             <div className="p-3 border-t border-slate-200 bg-white flex justify-end">

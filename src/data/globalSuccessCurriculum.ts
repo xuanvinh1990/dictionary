@@ -897,7 +897,7 @@ export const GLOBAL_SUCCESS_CURRICULUM: GradeCurriculum[] = [
             "ipa": "/ˈlɪtə/",
             "meaningVi": "vứt rác bừa bãi",
             "keyCollocations": [
-              "do not litter",
+              "never litter",
               "litter the beach",
               "stop littering"
             ]
@@ -1135,8 +1135,8 @@ export const GLOBAL_SUCCESS_CURRICULUM: GradeCurriculum[] = [
             "ipa": "/straɪk/",
             "meaningVi": "đánh, điểm (chuông, đồng hồ)",
             "keyCollocations": [
-              "clock strikes midnight",
-              "bells strike",
+              "strike midnight",
+              "strike on time",
               "strike twelve"
             ]
           },
@@ -1157,7 +1157,7 @@ export const GLOBAL_SUCCESS_CURRICULUM: GradeCurriculum[] = [
             "ipa": "/θrəʊ/",
             "meaningVi": "ném, vứt",
             "keyCollocations": [
-              "do not throw rubbish",
+              "never throw rubbish",
               "throw away bad luck",
               "throw coins"
             ]
@@ -1867,7 +1867,7 @@ export const GLOBAL_SUCCESS_CURRICULUM: GradeCurriculum[] = [
             "ipa": "/ˈhaʊswɜːk/",
             "meaningVi": "công việc nhà",
             "keyCollocations": [
-              "robots do housework",
+              "do housework",
               "help with housework",
               "share housework"
             ]
@@ -1889,7 +1889,7 @@ export const GLOBAL_SUCCESS_CURRICULUM: GradeCurriculum[] = [
             "ipa": "/lʊk ˈɑːftər/",
             "meaningVi": "trông nom, chăm sóc",
             "keyCollocations": [
-              "smart robots look after children",
+              "look after children",
               "look after pets",
               "look after the house"
             ]
@@ -2041,7 +2041,7 @@ export const GLOBAL_SUCCESS_CURRICULUM: GradeCurriculum[] = [
             "keyCollocations": [
               "do a green survey",
               "do a survey on recycling",
-              "students do a survey"
+              "conduct a survey"
             ]
           },
           {
@@ -2255,7 +2255,7 @@ export const GLOBAL_SUCCESS_CURRICULUM: GradeCurriculum[] = [
             "ipa": "/duː ðə ˈdɪʃɪz/",
             "meaningVi": "rửa bát, đĩa",
             "keyCollocations": [
-              "robots do the dishes",
+              "do the dishes",
               "help do the dishes",
               "do the dishes after dinner"
             ]
@@ -2266,7 +2266,7 @@ export const GLOBAL_SUCCESS_CURRICULUM: GradeCurriculum[] = [
             "ipa": "/duː ðə ˈwɒʃɪŋ/",
             "meaningVi": "giặt giũ quần áo",
             "keyCollocations": [
-              "machine does the washing",
+              "do the washing",
               "do the washing quickly",
               "help do the washing"
             ]
@@ -2277,7 +2277,7 @@ export const GLOBAL_SUCCESS_CURRICULUM: GradeCurriculum[] = [
             "ipa": "/ˈfiːlɪŋz/",
             "meaningVi": "cảm xúc, tình cảm",
             "keyCollocations": [
-              "robots have no feelings",
+              "share feelings",
               "human feelings",
               "express feelings"
             ]
@@ -2311,7 +2311,7 @@ export const GLOBAL_SUCCESS_CURRICULUM: GradeCurriculum[] = [
             "meaningVi": "là, ủi quần áo",
             "keyCollocations": [
               "iron clothes",
-              "robots can iron",
+              "iron uniforms",
               "iron carefully"
             ]
           },
@@ -2322,7 +2322,7 @@ export const GLOBAL_SUCCESS_CURRICULUM: GradeCurriculum[] = [
             "meaningVi": "hái, thu hoạch (hoa, quả)",
             "keyCollocations": [
               "pick fruit in the garden",
-              "robots pick apples",
+              "pick ripe apples",
               "pick flowers"
             ]
           },
@@ -2355,7 +2355,7 @@ export const GLOBAL_SUCCESS_CURRICULUM: GradeCurriculum[] = [
             "meaningVi": "cất, dọn dẹp",
             "keyCollocations": [
               "put away toys",
-              "robots put away books",
+              "put away books",
               "put away clothes"
             ]
           },
@@ -2411,7 +2411,7 @@ export const GLOBAL_SUCCESS_CURRICULUM: GradeCurriculum[] = [
             "keyCollocations": [
               "water plants",
               "water the flowers",
-              "robots water the garden"
+              "water the garden"
             ]
           },
           {
@@ -2836,9 +2836,9 @@ export const GLOBAL_SUCCESS_CURRICULUM: GradeCurriculum[] = [
             "ipa": "/pɒp/",
             "meaningVi": "nặn (mụn)",
             "keyCollocations": [
-              "do not pop pimples",
-              "pop a blister",
-              "pop spots"
+              "never pop pimples",
+              "avoid popping pimples",
+              "never pop spots"
             ]
           },
           {
@@ -4005,7 +4005,7 @@ export const GLOBAL_SUCCESS_CURRICULUM: GradeCurriculum[] = [
             "meaningVi": "tuân theo luật giao thông",
             "keyCollocations": [
               "strictly obey traffic rules",
-              "students must obey traffic rules",
+              "obey traffic rules",
               "importance of obeying traffic rules"
             ]
           },
@@ -4071,7 +4071,7 @@ export const GLOBAL_SUCCESS_CURRICULUM: GradeCurriculum[] = [
             "meaningVi": "nóc xe, mái nhà",
             "keyCollocations": [
               "roof of the car",
-              "do not ride on the roof",
+              "car roof",
               "roof rack"
             ]
           },
@@ -4298,7 +4298,7 @@ export const GLOBAL_SUCCESS_CURRICULUM: GradeCurriculum[] = [
             "meaningVi": "bộ phim hấp dẫn phải xem",
             "keyCollocations": [
               "must-see film",
-              "this year must-see",
+              "must-see attraction",
               "declared a must-see"
             ]
           },
@@ -4731,7 +4731,7 @@ export const GLOBAL_SUCCESS_CURRICULUM: GradeCurriculum[] = [
             "keyCollocations": [
               "limited resources",
               "limited supply",
-              "fossil fuels are limited"
+              "limited energy"
             ]
           },
           {
@@ -4742,7 +4742,7 @@ export const GLOBAL_SUCCESS_CURRICULUM: GradeCurriculum[] = [
             "keyCollocations": [
               "non-renewable energy",
               "non-renewable sources",
-              "coal is non-renewable"
+              "non-renewable fuel"
             ]
           },
           {
@@ -4762,7 +4762,7 @@ export const GLOBAL_SUCCESS_CURRICULUM: GradeCurriculum[] = [
             "ipa": "/ˌəʊvəˈkuːl/",
             "meaningVi": "làm cho quá lạnh",
             "keyCollocations": [
-              "do not overcool the room",
+              "never overcool rooms",
               "avoid overcooling",
               "overcool the house"
             ]
@@ -4774,8 +4774,8 @@ export const GLOBAL_SUCCESS_CURRICULUM: GradeCurriculum[] = [
             "meaningVi": "làm cho quá nóng",
             "keyCollocations": [
               "avoid overheating",
-              "do not overheat rooms",
-              "devices overheat"
+              "never overheat rooms",
+              "overheat easily"
             ]
           },
           {
@@ -4884,7 +4884,7 @@ export const GLOBAL_SUCCESS_CURRICULUM: GradeCurriculum[] = [
             "meaningVi": "làm ấm lên, nóng lên",
             "keyCollocations": [
               "warm the house",
-              "sun warms the water",
+              "warm the water",
               "warm up"
             ]
           }
@@ -4903,7 +4903,7 @@ export const GLOBAL_SUCCESS_CURRICULUM: GradeCurriculum[] = [
             "keyCollocations": [
               "appear in cities",
               "suddenly appear",
-              "new vehicles appear"
+              "appear everywhere"
             ]
           },
           {
@@ -4956,9 +4956,9 @@ export const GLOBAL_SUCCESS_CURRICULUM: GradeCurriculum[] = [
             "ipa": "/ˌdɪsəˈpɪə/",
             "meaningVi": "biến mất",
             "keyCollocations": [
-              "traffic jams will disappear",
+              "soon disappear",
               "disappear quickly",
-              "fumes disappear"
+              "gradually disappear"
             ]
           },
           {
@@ -5261,7 +5261,7 @@ export const GLOBAL_SUCCESS_CURRICULUM: GradeCurriculum[] = [
             "meaningVi": "đảo quốc",
             "keyCollocations": [
               "beautiful island country",
-              "New Zealand is an island country",
+              "peaceful island country",
               "explore an island country"
             ]
           },
@@ -6729,7 +6729,7 @@ export const GLOBAL_SUCCESS_CURRICULUM: GradeCurriculum[] = [
             "keyCollocations": [
               "greet guests warmly",
               "greet each other",
-              "friendly greet"
+              "greet visitors"
             ]
           },
           {
@@ -9661,7 +9661,7 @@ export const GLOBAL_SUCCESS_CURRICULUM: GradeCurriculum[] = [
             "keyCollocations": [
               "avoid learning by rote",
               "learn formulas by rote",
-              "do not learn by rote"
+              "stop learning by rote"
             ]
           },
           {
@@ -11517,6 +11517,8 @@ export interface IPADetails {
     uk: string;
     us: string;
     note?: string;
+    audioUk?: string;
+    audioUs?: string;
   };
   cambridge: {
     uk: string;
@@ -11530,6 +11532,8 @@ export interface IPADetails {
     us: string;
     syllables?: string;
     note?: string;
+    audioUk?: string;
+    audioUs?: string;
   };
   syllables?: string;
   audioUrlUk?: string;
@@ -11540,6 +11544,7 @@ export interface DictionaryExercise {
   keyword: string;
   ipa: string;
   ipaDetails?: IPADetails;
+  sourceUrl?: string;
   cambridgeUrl?: string;
   partOfSpeech: string;
   dictionarySource: string;

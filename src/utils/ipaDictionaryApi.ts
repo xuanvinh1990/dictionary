@@ -12,31 +12,51 @@ export interface CurriculumKeywordItem {
   keyCollocations?: string[];
 }
 
-// Build index map of all 1,011 curriculum keywords for O(1) retrieval
+// Build index map of all 1,011 curriculum keywords (preserving all grade/unit occurrences)
 const CURRICULUM_WORD_MAP = new Map<string, CurriculumKeywordItem>();
+const CURRICULUM_WORD_LIST_MAP = new Map<string, CurriculumKeywordItem[]>();
 
 for (const g of GLOBAL_SUCCESS_CURRICULUM) {
   for (const u of g.units) {
     for (const kw of u.suggestedKeywords) {
       const clean = kw.word.trim().toLowerCase();
+      const item: CurriculumKeywordItem = {
+        word: kw.word,
+        pos: kw.pos,
+        ipa: kw.ipa || '',
+        meaningVi: kw.meaningVi,
+        grade: g.grade,
+        unit: u.unit,
+        unitTitle: u.title,
+        keyCollocations: kw.keyCollocations,
+      };
       if (!CURRICULUM_WORD_MAP.has(clean)) {
-        CURRICULUM_WORD_MAP.set(clean, {
-          word: kw.word,
-          pos: kw.pos,
-          ipa: kw.ipa || '',
-          meaningVi: kw.meaningVi,
-          grade: g.grade,
-          unit: u.unit,
-          unitTitle: u.title,
-          keyCollocations: kw.keyCollocations,
-        });
+        CURRICULUM_WORD_MAP.set(clean, item);
       }
+      const list = CURRICULUM_WORD_LIST_MAP.get(clean) || [];
+      list.push(item);
+      CURRICULUM_WORD_LIST_MAP.set(clean, list);
     }
   }
 }
 
-export function findCurriculumWord(word: string): CurriculumKeywordItem | undefined {
-  return CURRICULUM_WORD_MAP.get(word.trim().toLowerCase());
+export function findCurriculumWord(
+  word: string,
+  preferredGrade?: number,
+  preferredUnit?: number
+): CurriculumKeywordItem | undefined {
+  const clean = word.trim().toLowerCase();
+  const list = CURRICULUM_WORD_LIST_MAP.get(clean);
+  if (!list || list.length === 0) return undefined;
+  if (preferredGrade !== undefined && preferredUnit !== undefined) {
+    const exact = list.find((x) => x.grade === preferredGrade && x.unit === preferredUnit);
+    if (exact) return exact;
+  }
+  if (preferredGrade !== undefined) {
+    const byGrade = list.find((x) => x.grade === preferredGrade);
+    if (byGrade) return byGrade;
+  }
+  return list[0];
 }
 
 export interface UnifiedSearchResult {
@@ -427,9 +447,17 @@ export function getCambridgeIPA(word: string, existingIPA?: string): { uk: strin
 export function deriveIPADetails(word: string, existingIPA?: string): IPADetails {
   const cleanWord = word.trim().toLowerCase();
 
-  // 1. If in curated preset database, return rich record
+  // 1. If in curated preset database, return cloned record to avoid mutating shared template
   if (OFFICIAL_IPA_DATABASE[cleanWord]) {
-    return OFFICIAL_IPA_DATABASE[cleanWord];
+    const entry = OFFICIAL_IPA_DATABASE[cleanWord];
+    return {
+      oxford: { ...entry.oxford },
+      cambridge: { ...entry.cambridge },
+      longman: { ...entry.longman },
+      syllables: entry.syllables,
+      audioUrlUk: entry.audioUrlUk,
+      audioUrlUs: entry.audioUrlUs,
+    };
   }
 
   // 2. Tra cứu từ Giáo trình Global Success (1.011 từ vựng chính khóa Lớp 6 - 9 từ file đính kèm)

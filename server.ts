@@ -37,15 +37,28 @@ interface GenerateRequest {
   variationSeed?: number;
 }
 
-import { deriveIPADetails } from './src/utils/ipaDictionaryApi';
-import { GLOBAL_SUCCESS_CURRICULUM } from './src/data/globalSuccessCurriculum';
-import { findOxfordWord } from './src/data/oxfordVocabulary3000';
-import { generateExerciseForKeyword } from './src/utils/exerciseGenerator';
 import {
   DICTIONARY_SOURCES,
   DictionarySourceId,
   resolveDictionarySourceId,
 } from './src/utils/dictionarySources';
+
+// Lazy-load large curriculum & vocabulary modules so port 3000 binds immediately on startup
+let ipaUtilsPromise: Promise<typeof import('./src/utils/ipaDictionaryApi')> | null = null;
+function getIpaUtils() {
+  if (!ipaUtilsPromise) {
+    ipaUtilsPromise = import('./src/utils/ipaDictionaryApi');
+  }
+  return ipaUtilsPromise;
+}
+
+let exerciseGeneratorPromise: Promise<typeof import('./src/utils/exerciseGenerator')> | null = null;
+function getExerciseGenerator() {
+  if (!exerciseGeneratorPromise) {
+    exerciseGeneratorPromise = import('./src/utils/exerciseGenerator');
+  }
+  return exerciseGeneratorPromise;
+}
 
 interface OnlineDictionaryResult {
   sourceId: DictionarySourceId;
@@ -517,6 +530,7 @@ app.get('/api/dictionary-ipa', async (req: Request, res: Response) => {
   }
 
   try {
+    const { deriveIPADetails } = await getIpaUtils();
     const details = deriveIPADetails(word);
 
     // 1. Fetch live directly from the selected dictionary source (Cambridge / Oxford / Longman + dictionaryapi.dev fallback)
@@ -756,7 +770,7 @@ ${variationSeed > 0 ? `\n3. YÊU CẦU ĐỔI BỘ CÂU HỎI MỚI (Biến th�
 
     if (!response || !response.text) {
       console.log(`Using fallback generator for "${cleanKeyword}" due to API unavailability`);
-      const fallbackData = createCurriculumFallback(
+      const fallbackData = await createCurriculumFallback(
         cleanKeyword,
         grade,
         unit,
@@ -772,6 +786,7 @@ ${variationSeed > 0 ? `\n3. YÊU CẦU ĐỔI BỘ CÂU HỎI MỚI (Biến th�
     }
 
     const parsedData = JSON.parse(response.text);
+    const { deriveIPADetails } = await getIpaUtils();
     const ipaDetails = deriveIPADetails(cleanKeyword, parsedData.ipa);
 
     if (liveOnline) {
@@ -821,7 +836,7 @@ ${variationSeed > 0 ? `\n3. YÊU CẦU ĐỔI BỘ CÂU HỎI MỚI (Biến th�
   } catch {
     try {
       const cleanWord = (req.body.keyword || 'habit').trim().toLowerCase();
-      const fallbackData = createCurriculumFallback(
+      const fallbackData = await createCurriculumFallback(
         cleanWord,
         req.body.grade || 8,
         req.body.unit || 6,
@@ -843,7 +858,7 @@ ${variationSeed > 0 ? `\n3. YÊU CẦU ĐỔI BỘ CÂU HỎI MỚI (Biến th�
 });
 
 // Built-in intelligent dictionary bank & fallback generator
-function createCurriculumFallback(
+async function createCurriculumFallback(
   word: string,
   grade: number,
   unit: number,
@@ -857,6 +872,7 @@ function createCurriculumFallback(
 ) {
   const sourceId = resolveDictionarySourceId(source);
   const sourceInfo = DICTIONARY_SOURCES[sourceId];
+  const { generateExerciseForKeyword } = await getExerciseGenerator();
 
   // Delegate to generateExerciseForKeyword for 100% semantic, topic-aware, and grammatical precision
   const exercise = generateExerciseForKeyword(
@@ -965,4 +981,7 @@ async function startServer() {
   });
 }
 
-startServer();
+startServer().catch((err) => {
+  console.error('Failed to start server:', err);
+  process.exit(1);
+});

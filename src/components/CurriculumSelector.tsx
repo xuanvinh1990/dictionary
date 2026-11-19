@@ -449,8 +449,11 @@ export const CurriculumSelector: React.FC<CurriculumSelectorProps> = ({
 
         {/* Step 2.5: Chọn Nguồn Từ Điển Tra Cứu (Cambridge / Oxford / Longman) */}
         <div className="bg-slate-50/80 border border-slate-200 rounded-xl p-3.5">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2.5">
-            <label className="text-xs font-semibold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+            <label
+              htmlFor="dictionary-source-select"
+              className="text-xs font-semibold uppercase tracking-wider text-slate-700 flex items-center gap-1.5 cursor-pointer"
+            >
               <FileText className="w-3.5 h-3.5 text-blue-700" />
               <span>Nguồn Từ Điển Tra Cứu (Dictionary Source)</span>
             </label>
@@ -458,35 +461,25 @@ export const CurriculumSelector: React.FC<CurriculumSelectorProps> = ({
               Chọn nguồn để lấy phiên âm IPA, định nghĩa & liên kết tra cứu trực tiếp
             </span>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-            {(['cambridge', 'oxford', 'ldoce'] as DictionarySourceId[]).map((id) => {
-              const src = DICTIONARY_SOURCES[id];
-              const isSelected = activeSourceId === id;
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => onChangeDictionarySource(src.name)}
-                  className={`px-3 py-2 rounded-xl border text-left transition-all flex items-center justify-between gap-2 cursor-pointer ${
-                    isSelected
-                      ? 'bg-blue-700 text-white border-blue-700 shadow-xs'
-                      : 'bg-white text-slate-700 border-slate-200 hover:border-blue-400 hover:bg-blue-50/50'
-                  }`}
-                >
-                  <div className="min-w-0">
-                    <div className="text-xs font-bold truncate">{src.shortName}</div>
-                    <div
-                      className={`text-[10px] truncate ${
-                        isSelected ? 'text-blue-100' : 'text-slate-500'
-                      }`}
-                    >
-                      {src.domain}
-                    </div>
-                  </div>
-                  {isSelected && <Check className="w-4 h-4 shrink-0 text-white" />}
-                </button>
-              );
-            })}
+          <div className="relative">
+            <select
+              id="dictionary-source-select"
+              value={activeSourceInfo.name}
+              onChange={(e) => onChangeDictionarySource(e.target.value)}
+              className="w-full appearance-none bg-white border border-slate-300 rounded-xl px-4 py-2.5 pr-10 text-sm font-semibold text-slate-800 shadow-2xs focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600 cursor-pointer"
+            >
+              {(['cambridge', 'oxford', 'ldoce'] as DictionarySourceId[]).map((id) => {
+                const src = DICTIONARY_SOURCES[id];
+                return (
+                  <option key={id} value={src.name}>
+                    {src.shortName} — {src.domain}
+                  </option>
+                );
+              })}
+            </select>
+            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-500">
+              <ChevronDown className="w-4 h-4" />
+            </div>
           </div>
         </div>
 
@@ -805,68 +798,64 @@ export const CurriculumSelector: React.FC<CurriculumSelectorProps> = ({
             </div>
           )}
 
-          {/* Quick select vocabulary chips from current Global Success Unit with exact IPA */}
-          {sourceMode === 'global-success' && (
-            <div className="mt-3 p-3.5 bg-slate-50/80 rounded-xl border border-slate-200">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2.5">
-                <div className="flex items-center gap-2">
-                  <BookOpen className="w-4 h-4 text-blue-700" />
-                  <span className="text-xs font-bold text-slate-800">
-                    Từ vựng & Phiên âm chuẩn SGK Global Success {selectedGrade} — Unit {currentUnitData.unit}: {currentUnitData.title}
-                  </span>
-                  <span className="bg-blue-100 text-blue-800 text-[10px] font-extrabold px-1.5 py-0.5 rounded-full">
-                    {currentUnitData.suggestedKeywords.length} từ vựng
+          {/* Dropdown selector for Global Success Unit suggested vocabulary with exact IPA */}
+          {sourceMode === 'global-success' && (() => {
+            const matchedUnitWord = currentUnitData.suggestedKeywords.find(
+              (item) => item.word.toLowerCase() === keyword.trim().toLowerCase()
+            );
+            return (
+              <div className="mt-3 p-3.5 bg-slate-50/80 rounded-xl border border-slate-200">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+                  <label
+                    htmlFor="unit-vocab-select"
+                    className="flex flex-wrap items-center gap-2 cursor-pointer"
+                  >
+                    <BookOpen className="w-4 h-4 text-blue-700 shrink-0" />
+                    <span className="text-xs font-bold text-slate-800">
+                      Từ vựng gợi ý theo Unit — Global Success {selectedGrade} (Unit {currentUnitData.unit}: {currentUnitData.title})
+                    </span>
+                    <span className="bg-blue-100 text-blue-800 text-[10px] font-extrabold px-1.5 py-0.5 rounded-full">
+                      {currentUnitData.suggestedKeywords.length} từ vựng
+                    </span>
+                  </label>
+                  <span className="text-[11px] text-slate-500">
+                    Chọn từ vựng để nạp từ khóa & tạo bài tập
                   </span>
                 </div>
-                <span className="text-[11px] text-slate-500">
-                  Bấm vào từ vựng để nạp từ khóa & tạo bài tập:
-                </span>
-              </div>
 
-              <div className="max-h-48 overflow-y-auto pr-1 flex flex-wrap gap-1.5 custom-scrollbar">
-                {currentUnitData.suggestedKeywords.map((item) => {
-                  const isSelected = keyword.toLowerCase() === item.word.toLowerCase();
-                  return (
-                    <button
-                      key={item.word}
-                      type="button"
-                      onClick={() => {
-                        if (onSelectKeywordDirect) {
-                          onSelectKeywordDirect(item.word, selectedGrade, currentUnitData.unit);
-                        } else {
-                          onChangeKeyword(item.word);
-                        }
-                      }}
-                      className={`text-xs px-2.5 py-1.5 rounded-lg border transition-all text-left flex items-center gap-1.5 ${
-                        isSelected
-                          ? 'bg-blue-700 text-white border-blue-700 shadow-xs font-bold'
-                          : 'bg-white text-slate-700 border-slate-200 hover:border-blue-400 hover:bg-blue-50/50 cursor-pointer'
-                      }`}
-                      title={`${item.word} (${item.pos}) [${item.ipa || ''}]: ${item.meaningVi}`}
-                    >
-                      <span className="font-semibold">{item.word}</span>
-                      {item.ipa && (
-                        <span
-                          className={`text-[10px] font-mono ${
-                            isSelected ? 'text-blue-100' : 'text-blue-700 font-medium'
-                          }`}
-                        >
-                          {item.ipa}
-                        </span>
-                      )}
-                      <span
-                        className={`text-[10px] ${
-                          isSelected ? 'text-blue-200' : 'text-slate-400'
-                        }`}
-                      >
-                        ({item.meaningVi})
-                      </span>
-                    </button>
-                  );
-                })}
+                <div className="relative">
+                  <select
+                    id="unit-vocab-select"
+                    value={matchedUnitWord ? matchedUnitWord.word : ''}
+                    onChange={(e) => {
+                      const selectedWord = e.target.value;
+                      if (!selectedWord) return;
+                      if (onSelectKeywordDirect) {
+                        onSelectKeywordDirect(selectedWord, selectedGrade, currentUnitData.unit);
+                      } else {
+                        onChangeKeyword(selectedWord);
+                      }
+                    }}
+                    className="w-full appearance-none bg-white border border-slate-300 rounded-xl px-4 py-2.5 pr-10 text-sm font-semibold text-slate-800 shadow-2xs focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600 cursor-pointer"
+                  >
+                    {!matchedUnitWord && (
+                      <option value="">
+                        -- Chọn từ vựng gợi ý Unit {currentUnitData.unit} ({currentUnitData.suggestedKeywords.length} từ) --
+                      </option>
+                    )}
+                    {currentUnitData.suggestedKeywords.map((item, idx) => (
+                      <option key={item.word} value={item.word}>
+                        {idx + 1}. {item.word} {item.ipa ? `${item.ipa} ` : ''}({item.pos}) — {item.meaningVi}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-500">
+                    <ChevronDown className="w-4 h-4" />
+                  </div>
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
         </div>
 
         {/* Toggle Advanced Exam Settings */}

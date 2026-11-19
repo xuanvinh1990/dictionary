@@ -447,38 +447,75 @@ export const CurriculumSelector: React.FC<CurriculumSelectorProps> = ({
           </div>
         )}
 
-        {/* Step 2.5: Chọn Nguồn Từ Điển Tra Cứu (Cambridge / Oxford / Longman) */}
-        <div className="bg-slate-50/80 border border-slate-200 rounded-xl p-3.5">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
-            <label
-              htmlFor="dictionary-source-select"
-              className="text-xs font-semibold uppercase tracking-wider text-slate-700 flex items-center gap-1.5 cursor-pointer"
-            >
-              <FileText className="w-3.5 h-3.5 text-blue-700" />
-              <span>Nguồn Từ Điển Tra Cứu (Dictionary Source)</span>
-            </label>
-            <span className="text-[11px] text-slate-500">
-              Chọn nguồn để lấy phiên âm IPA, định nghĩa & liên kết tra cứu trực tiếp
-            </span>
+        {/* Step 2.5: Chọn Nguồn Từ Điển Tra Cứu & Số Lượng Câu Hỏi Bài Tập */}
+        <div className="bg-slate-50/80 border border-slate-200 rounded-xl p-3.5 grid grid-cols-1 md:grid-cols-2 gap-3.5">
+          {/* Dictionary Source Dropdown */}
+          <div>
+            <div className="flex items-center justify-between gap-2 mb-1.5">
+              <label
+                htmlFor="dictionary-source-select"
+                className="text-xs font-semibold uppercase tracking-wider text-slate-700 flex items-center gap-1.5 cursor-pointer"
+              >
+                <FileText className="w-3.5 h-3.5 text-blue-700" />
+                <span>Nguồn Từ Điển Tra Cứu</span>
+              </label>
+              <span className="text-[11px] text-slate-500 hidden sm:inline">
+                IPA, định nghĩa & tra cứu
+              </span>
+            </div>
+            <div className="relative">
+              <select
+                id="dictionary-source-select"
+                value={activeSourceInfo.name}
+                onChange={(e) => onChangeDictionarySource(e.target.value)}
+                className="w-full appearance-none bg-white border border-slate-300 rounded-xl px-4 py-2.5 pr-10 text-sm font-semibold text-slate-800 shadow-2xs focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600 cursor-pointer"
+              >
+                {(['cambridge', 'oxford', 'ldoce'] as DictionarySourceId[]).map((id) => {
+                  const src = DICTIONARY_SOURCES[id];
+                  return (
+                    <option key={id} value={src.name}>
+                      {src.shortName} — {src.domain}
+                    </option>
+                  );
+                })}
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-500">
+                <ChevronDown className="w-4 h-4" />
+              </div>
+            </div>
           </div>
-          <div className="relative">
-            <select
-              id="dictionary-source-select"
-              value={activeSourceInfo.name}
-              onChange={(e) => onChangeDictionarySource(e.target.value)}
-              className="w-full appearance-none bg-white border border-slate-300 rounded-xl px-4 py-2.5 pr-10 text-sm font-semibold text-slate-800 shadow-2xs focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600 cursor-pointer"
-            >
-              {(['cambridge', 'oxford', 'ldoce'] as DictionarySourceId[]).map((id) => {
-                const src = DICTIONARY_SOURCES[id];
-                return (
-                  <option key={id} value={src.name}>
-                    {src.shortName} — {src.domain}
-                  </option>
-                );
-              })}
-            </select>
-            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-500">
-              <ChevronDown className="w-4 h-4" />
+
+          {/* Question Count Dropdown (2 -> 4 bold, 4 -> 6 bold, 6 -> 8 bold) */}
+          <div>
+            <div className="flex items-center justify-between gap-2 mb-1.5">
+              <label
+                htmlFor="question-count-select"
+                className="text-xs font-semibold uppercase tracking-wider text-slate-700 flex items-center gap-1.5 cursor-pointer"
+              >
+                <Sliders className="w-3.5 h-3.5 text-blue-700" />
+                <span>Số lượng câu hỏi & Từ khóa in đậm</span>
+              </label>
+              <span className="text-[11px] text-slate-500 hidden sm:inline">
+                Ngẫu nhiên không theo thứ tự
+              </span>
+            </div>
+            <div className="relative">
+              <select
+                id="question-count-select"
+                value={questionCount}
+                onChange={(e) =>
+                  onChangeQuestionCount(parseInt(e.target.value, 10))
+                }
+                className="w-full appearance-none bg-white border border-slate-300 rounded-xl px-4 py-2.5 pr-10 text-sm font-semibold text-slate-800 shadow-2xs focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600 cursor-pointer"
+              >
+                <option value={2}>2 câu hỏi — 4 cụm từ gợi ý in đậm (Chuẩn thi lớp 10)</option>
+                <option value={3}>3 câu hỏi — 5 cụm từ gợi ý in đậm (Kiểm tra giữa kỳ)</option>
+                <option value={4}>4 câu hỏi — 6 cụm từ gợi ý in đậm (Phiếu bài tập)</option>
+                <option value={6}>6 câu hỏi — 8 cụm từ gợi ý in đậm (Luyện tập mở rộng)</option>
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-500">
+                <ChevronDown className="w-4 h-4" />
+              </div>
             </div>
           </div>
         </div>
@@ -863,10 +900,10 @@ export const CurriculumSelector: React.FC<CurriculumSelectorProps> = ({
           <button
             type="button"
             onClick={() => setShowAdvanced(!showAdvanced)}
-            className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 transition-colors"
+            className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
           >
             <Sliders className="w-3.5 h-3.5 text-slate-500" />
-            <span>Tùy chỉnh nâng cao (Số lượng câu hỏi, số thứ tự câu bắt đầu...)</span>
+            <span>Tùy chỉnh nâng cao (Số thứ tự câu bắt đầu, giới hạn số từ tối đa...)</span>
             <ChevronDown
               className={`w-3.5 h-3.5 transition-transform ${
                 showAdvanced ? 'rotate-180' : ''
@@ -875,46 +912,7 @@ export const CurriculumSelector: React.FC<CurriculumSelectorProps> = ({
           </button>
 
           {showAdvanced && (
-            <div className="mt-3 p-4 bg-slate-50 rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
-              {/* Dictionary source selector */}
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Chuẩn quy ước phiên âm & từ điển
-                </label>
-                <select
-                  value={activeSourceInfo.name}
-                  onChange={(e) => onChangeDictionarySource(e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-2 text-slate-800 font-semibold focus:outline-none focus:ring-1 focus:ring-blue-600 cursor-pointer"
-                >
-                  {(['cambridge', 'oxford', 'ldoce'] as DictionarySourceId[]).map((id) => (
-                    <option key={id} value={DICTIONARY_SOURCES[id].name}>
-                      {DICTIONARY_SOURCES[id].shortName} ({DICTIONARY_SOURCES[id].domain})
-                    </option>
-                  ))}
-                </select>
-                <span className="text-[10px] text-slate-500 mt-1 block">
-                  Hỗ trợ Cambridge, Oxford Learner's & Longman (LDOCE)
-                </span>
-              </div>
-
-              {/* Question Count */}
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Số lượng câu hỏi bài tập
-                </label>
-                <select
-                  value={questionCount}
-                  onChange={(e) =>
-                    onChangeQuestionCount(parseInt(e.target.value, 10))
-                  }
-                  className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-2 text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-600 cursor-pointer"
-                >
-                  <option value={2}>2 câu (Chuẩn đề tuyển sinh lớp 10)</option>
-                  <option value={3}>3 câu (Đề kiểm tra giữa kỳ / học kỳ)</option>
-                  <option value={4}>4 câu (Phiếu bài tập mở rộng)</option>
-                </select>
-              </div>
-
+            <div className="mt-3 p-4 bg-slate-50 rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
               {/* Start Question Numbering */}
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">
@@ -937,6 +935,23 @@ export const CurriculumSelector: React.FC<CurriculumSelectorProps> = ({
                     (Mặc định 35 trong đề thi)
                   </span>
                 </div>
+              </div>
+
+              {/* Max Words per Phrase */}
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Độ dài cụm từ gợi ý in đậm & đáp án
+                </label>
+                <select
+                  value={maxWords}
+                  onChange={(e) =>
+                    onChangeMaxWords(parseInt(e.target.value, 10))
+                  }
+                  className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-2 text-slate-800 font-semibold focus:outline-none focus:ring-1 focus:ring-blue-600 cursor-pointer"
+                >
+                  <option value={2}>Đúng 2 từ (TWO words)</option>
+                  <option value={3}>Từ 2 đến 3 từ (TWO or THREE words — Chuẩn đề thi)</option>
+                </select>
               </div>
             </div>
           )}

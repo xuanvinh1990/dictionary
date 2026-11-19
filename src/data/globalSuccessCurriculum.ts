@@ -11604,15 +11604,11 @@ export const SAMPLE_HABIT_EXERCISE: DictionaryExercise = {
     },
     {
       fullSentence: 'Most of us have some undesirable habits.',
-      boldPhrase: 'have some undesirable habits',
+      boldPhrase: 'undesirable habits',
     },
     {
       fullSentence: 'The strategy is helping children develop the habit of reading for fun.',
       boldPhrase: 'develop the habit',
-    },
-    {
-      fullSentence: "It's all right to borrow money occasionally, but don't let it become a habit.",
-      boldPhrase: 'let it become a habit',
     },
     {
       fullSentence: "It's not easy for children to break the habit of using digital devices while having meals.",
@@ -11724,16 +11720,16 @@ export const PRESET_EXERCISES: { [key: string]: { grade: number; unit: number; u
           boldPhrase: 'break with tradition',
         },
         {
-          fullSentence: 'These unique folk songs have been handed down by tradition.',
-          boldPhrase: 'handed down by tradition',
+          fullSentence: 'Local craftsmen work hard to preserve the tradition for younger generations.',
+          boldPhrase: 'preserve the tradition',
         },
         {
-          fullSentence: 'It is important for youngsters to keep the tradition alive.',
-          boldPhrase: 'keep the tradition alive',
+          fullSentence: 'It is important for youngsters to keep tradition alive in modern times.',
+          boldPhrase: 'keep tradition alive',
         },
       ],
-      instructionEn: 'Look at the entry of the word "tradition" in a dictionary. Complete the sentences with phrases from the entry. Do not use more than THREE words for each phrase.',
-      instructionVi: '(Từ câu 35 đến câu 36, dựa vào bảng bên dưới, thí sinh chọn cụm từ thích hợp (không quá 3 từ) để hoàn chỉnh mỗi câu và viết câu trả lời vào Phần ANSWERS.)',
+      instructionEn: 'Look at the entry of the word "tradition" in a dictionary. Complete the sentences with phrases from the entry. Use TWO or THREE words for each phrase.',
+      instructionVi: '(Từ câu 35 đến câu 36, dựa vào bảng bên dưới, thí sinh chọn cụm từ thích hợp (từ 2 đến 3 từ) để hoàn chỉnh mỗi câu và viết câu trả lời vào Phần ANSWERS.)',
       pointsTotal: '(0.5 pt)',
       questions: [
         {
@@ -11748,9 +11744,9 @@ export const PRESET_EXERCISES: { [key: string]: { grade: number; unit: number; u
           questionNumber: 36,
           sentenceBefore: 'Local authorities are organizing cultural workshops to ',
           sentenceAfter: ' for future generations.',
-          answer: 'keep the tradition alive',
+          answer: 'keep tradition alive',
           vietnameseMeaning: 'Chính quyền địa phương đang tổ chức các buổi hội thảo văn hóa để giữ cho truyền thống tiếp tục tồn tại cho các thế hệ tương lai.',
-          explanation: 'Dựa vào câu ví dụ: "keep the tradition alive" (gìn giữ truyền thống luôn sống mãi).',
+          explanation: 'Dựa vào câu ví dụ: "keep tradition alive" (gìn giữ truyền thống luôn sống mãi, đúng quy định 2–3 từ).',
         },
       ],
     },

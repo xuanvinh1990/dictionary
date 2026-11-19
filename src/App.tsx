@@ -79,7 +79,7 @@ export default function App() {
     const activeSource = targetDictionarySource || dictionarySource;
     const activeCount = overrides?.questionCount ?? questionCount;
     const activeStart = overrides?.startQuestionNum ?? startQuestionNum;
-    const activeMaxWords = overrides?.maxWords ?? maxWords;
+    const activeMaxWords = Math.min(3, Math.max(2, overrides?.maxWords ?? maxWords));
 
     const reqId = ++latestRequestIdRef.current;
 
@@ -138,6 +138,8 @@ export default function App() {
     }
   };
 
+  const createRandomSeed = () => Math.floor(Math.random() * 1_000_000) + 1;
+
   // Auto-lookup online when teacher types a keyword (with 550ms debounce)
   const handleUserTypeKeyword = (newKeyword: string) => {
     setKeyword(newKeyword);
@@ -149,14 +151,15 @@ export default function App() {
     if (clean.length < 2) return;
 
     typingTimerRef.current = setTimeout(() => {
-      setVariationSeed(0);
+      const nextSeed = createRandomSeed();
+      setVariationSeed(nextSeed);
       executeGenerate(
         clean,
         selectedGrade,
         selectedUnit,
         currentUnitData.title,
         dictionarySource,
-        0
+        nextSeed
       );
     }, 550);
   };
@@ -171,11 +174,12 @@ export default function App() {
     setQuestionCount(2);
     setStartQuestionNum(35);
     setMaxWords(3);
-    setVariationSeed(0);
+    const nextSeed = createRandomSeed();
+    setVariationSeed(nextSeed);
     const grade9Obj =
       GLOBAL_SUCCESS_CURRICULUM.find((g) => g.grade === 9) || GLOBAL_SUCCESS_CURRICULUM[3];
     const unit6Obj = grade9Obj.units.find((u) => u.unit === 6) || grade9Obj.units[5];
-    executeGenerate('habit', 9, 6, unit6Obj.title, dictionarySource, 0, {
+    executeGenerate('habit', 9, 6, unit6Obj.title, dictionarySource, nextSeed, {
       questionCount: 2,
       startQuestionNum: 35,
       maxWords: 3,
@@ -198,8 +202,9 @@ export default function App() {
     if (!shouldKeepCustom) {
       setKeyword(newKw);
     }
-    setVariationSeed(0);
-    executeGenerate(newKw, newGrade, unit1.unit, unit1.title, undefined, 0);
+    const nextSeed = createRandomSeed();
+    setVariationSeed(nextSeed);
+    executeGenerate(newKw, newGrade, unit1.unit, unit1.title, undefined, nextSeed);
   };
 
   // Handle Select Unit: updates unit, picks 1st word, and REGENERATES IMMEDIATELY!
@@ -214,11 +219,12 @@ export default function App() {
       gradeObj.units.find((u) => u.unit === unitNum) || gradeObj.units[0];
     const newKw = unitObj.suggestedKeywords[0]?.word || keyword;
     setKeyword(newKw);
-    setVariationSeed(0);
-    executeGenerate(newKw, selectedGrade, unitNum, unitObj.title, undefined, 0);
+    const nextSeed = createRandomSeed();
+    setVariationSeed(nextSeed);
+    executeGenerate(newKw, selectedGrade, unitNum, unitObj.title, undefined, nextSeed);
   };
 
-  // Handle Direct Keyword Click (from chips, Oxford topics, or autocomplete)
+  // Handle Direct Keyword Click (from dropdown, Oxford topics, or autocomplete)
   const handleSelectKeywordDirect = (
     word: string,
     optGrade?: number,
@@ -235,8 +241,9 @@ export default function App() {
       setSelectedUnit(optUnit);
     }
     setKeyword(word);
-    setVariationSeed(0);
-    executeGenerate(word, targetGrade, targetUnit, undefined, undefined, 0);
+    const nextSeed = createRandomSeed();
+    setVariationSeed(nextSeed);
+    executeGenerate(word, targetGrade, targetUnit, undefined, undefined, nextSeed);
   };
 
   // Handle Select Preset quick button
@@ -248,24 +255,27 @@ export default function App() {
       setSelectedGrade(item.grade);
       setSelectedUnit(item.unit);
       setKeyword(item.exercise.keyword);
-      setVariationSeed(0);
-      executeGenerate(item.exercise.keyword, item.grade, item.unit, item.unitTitle, undefined, 0);
+      const nextSeed = createRandomSeed();
+      setVariationSeed(nextSeed);
+      executeGenerate(item.exercise.keyword, item.grade, item.unit, item.unitTitle, undefined, nextSeed);
     }
   };
 
   // Generate Exercise on manual button press or search submit
   const handleGenerate = () => {
     if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
-    setVariationSeed(0);
-    executeGenerate(keyword, selectedGrade, selectedUnit, currentUnitData.title, undefined, 0);
+    const nextSeed = createRandomSeed();
+    setVariationSeed(nextSeed);
+    executeGenerate(keyword, selectedGrade, selectedUnit, currentUnitData.title, undefined, nextSeed);
   };
 
-  // Switch to a different set of questions for the current keyword
+  // Switch to a different randomized set of questions for the current keyword
   const handleSwitchQuestions = () => {
     if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
     const activeKeyword = keyword.trim() || currentExercise.keyword;
     if (!activeKeyword) return;
-    const nextSeed = variationSeed + 1;
+    let nextSeed = createRandomSeed();
+    if (nextSeed === variationSeed) nextSeed += 1;
     setVariationSeed(nextSeed);
     executeGenerate(
       activeKeyword,
@@ -281,26 +291,29 @@ export default function App() {
   const handleSelectDictionarySource = (newSource: string) => {
     if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
     setDictionarySource(newSource);
-    setVariationSeed(0);
+    const nextSeed = createRandomSeed();
+    setVariationSeed(nextSeed);
     executeGenerate(
       keyword,
       selectedGrade,
       selectedUnit,
       currentUnitData.title,
       newSource,
-      0
+      nextSeed
     );
   };
 
   const handleChangeQuestionCount = (newCount: number) => {
     setQuestionCount(newCount);
+    const nextSeed = createRandomSeed();
+    setVariationSeed(nextSeed);
     executeGenerate(
       keyword,
       selectedGrade,
       selectedUnit,
       currentUnitData.title,
       dictionarySource,
-      variationSeed,
+      nextSeed,
       { questionCount: newCount }
     );
   };
@@ -320,13 +333,15 @@ export default function App() {
 
   const handleChangeMaxWords = (newMaxWords: number) => {
     setMaxWords(newMaxWords);
+    const nextSeed = createRandomSeed();
+    setVariationSeed(nextSeed);
     executeGenerate(
       keyword,
       selectedGrade,
       selectedUnit,
       currentUnitData.title,
       dictionarySource,
-      variationSeed,
+      nextSeed,
       { maxWords: newMaxWords }
     );
   };
@@ -488,7 +503,7 @@ export default function App() {
                     Đọc ngữ cảnh của câu cần hoàn thành, xác định từ loại và nghĩa còn thiếu.
                   </li>
                   <li>
-                    Điền cụm từ trích xuất từ bảng từ điển (không quá <strong>{maxWords} từ</strong>).
+                    Điền cụm từ trích xuất từ bảng từ điển (<strong>{maxWords === 2 ? 'đúng 2 từ' : 'từ 2 đến 3 từ'}</strong>).
                   </li>
                 </ul>
               </div>

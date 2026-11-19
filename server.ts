@@ -608,6 +608,7 @@ app.post('/api/generate-exercise', async (req: Request, res: Response) => {
     }
 
     const cleanKeyword = keyword.trim().toLowerCase();
+    const effectiveMaxWords = Math.min(3, Math.max(2, Number(maxWords) || 3));
     const sourceId = resolveDictionarySourceId(dictionarySource);
     const sourceInfo = DICTIONARY_SOURCES[sourceId];
 
@@ -635,7 +636,7 @@ LƯU Ý QUAN TRỌNG: Hãy sử dụng CHÍNH XÁC phiên âm IPA "${liveOnline.
       6: `YÊU CẦU ĐỘ KHÓ DÀNH CHO KHỐI LỚP 6 (Trình độ A1 - Cơ bản):
 - Ngữ pháp: Câu đơn ngắn (dưới 10 từ), thì Hiện tại đơn (is/am/are, V-s/es), Hiện tại tiếp diễn (is/are + V-ing), động từ khiếm khuyết đơn giản (can, should, must), cấu trúc sở thích (like/love/enjoy + V-ing, There is/are).
 - Ngữ cảnh: Đời sống học đường, lớp học mới, bạn bè, đồ dùng học tập, gia đình, nhà ở, hoạt động hàng ngày.
-- Chỗ trống: Điền cụm từ ngắn (1-2 từ, hoặc 3 từ rất dễ), có từ tín hiệu gợi ý rõ ràng ngay trước/sau chỗ trống.
+- Chỗ trống: Điền cụm từ ngắn từ 2 đến 3 từ rất dễ hiểu (TUYỆT ĐỐI KHÔNG dùng 1 từ hoặc 4 từ trở lên), có từ tín hiệu gợi ý rõ ràng ngay trước/sau chỗ trống.
 - Lời giải thích: Đơn giản, dễ hiểu, chỉ rõ từ loại và vị trí trong câu cho học sinh lớp 6.`,
       7: `YÊU CẦU ĐỘ KHÓ DÀNH CHO KHỐI LỚP 7 (Trình độ A2- - Mở rộng câu ghép):
 - Ngữ pháp: Câu ghép kết hợp liên từ (and, but, so, because), thì Quá khứ đơn (was/were, V-ed), Tương lai đơn (will), so sánh hơn/kém của tính từ, câu mệnh lệnh.
@@ -654,6 +655,15 @@ LƯU Ý QUAN TRỌNG: Hãy sử dụng CHÍNH XÁC phiên âm IPA "${liveOnline.
 - Lời giải thích: Chuyên sâu sư phạm, phân tích cấu trúc đề thi tuyển sinh lớp 10, chỉ ra điểm mấu chốt để đạt trọn vẹn điểm.`,
     };
 
+    const targetExampleCount =
+      questionCount === 2
+        ? 4
+        : questionCount === 4
+        ? 6
+        : questionCount === 6
+        ? 8
+        : Math.max(4, questionCount + 2);
+
     const prompt = `
 Bạn là chuyên gia khảo thí và giáo viên Tiếng Anh nhiều kinh nghiệm chuyên luyện thi tuyển sinh vào lớp 10 và giảng dạy giáo trình Global Success (Bộ GD&ĐT) khối ${grade}.
 Nhiệm vụ: Tạo một câu hỏi bài tập tra cứu từ điển dạng "Dictionary Entry Sentence Completion" (như đề thi tuyển sinh lớp 10 TP.HCM / đề kiểm tra định kỳ Global Success) cho từ khóa: "${cleanKeyword}".
@@ -669,18 +679,19 @@ YÊU CẦU ĐẶC BIỆT THEO CHUẨN ĐỀ THI:
    - IPA chuẩn xác theo ${sourceInfo.shortName} (ví dụ: ${liveOnline?.ukIpa || '/ˈhæb.ɪt/'})
    - Từ loại chính xác (${liveOnline?.pos || 'noun, verb, adjective, etc.'})
    - Định nghĩa xúc tích, chuẩn xác, có ghi nhãn ngữ pháp như ${liveOnline?.grammarTag || '[countable], [uncountable], [transitive]'}, etc.
-   - Danh sách 4 đến 5 câu ví dụ thực tế chuẩn từ điển ${sourceInfo.shortName}.
-   - Trong mỗi câu ví dụ, hãy chỉ rõ cụm từ/collocation quan trọng (độ dài 2-3 từ) để làm đáp án tiềm năng. Ví dụ với "habit": "eating habits", "develop the habit", "break the habit", "let it become a habit".
+   - TẠO CHÍNH XÁC ${targetExampleCount} CÂU VÍ DỤ thực tế chuẩn từ điển ${sourceInfo.shortName} (vì bài tập có ${questionCount} câu hỏi nên PHẢI có đúng ${targetExampleCount} cụm từ gợi ý in đậm khác nhau).
+   - Trong mỗi câu ví dụ, chỉ rõ một cụm từ/collocation quan trọng duy nhất (boldPhrase, không trùng lặp giữa các câu ví dụ, độ dài BẮT BUỘC TỪ 2 ĐẾN ${effectiveMaxWords} TỪ — TUYỆT ĐỐI KHÔNG ĐƯỢC 1 TỪ HOẶC 4 TỪ TRỞ LÊN, xuất hiện nguyên văn trong fullSentence) để làm từ khóa gợi ý in đậm. Ví dụ với "habit": "eating habits", "develop the habit", "break the habit", "undesirable habits".
 
 2. Tạo đúng ${questionCount} câu hỏi bài tập điền khuyết:
-   - Đánh số thứ tự bắt đầu từ câu số ${startQuestionNum} (ví dụ: ${startQuestionNum}, ${startQuestionNum + 1}).
+   - Đánh số thứ tự bắt đầu từ câu số ${startQuestionNum} (từ câu ${startQuestionNum} đến câu ${startQuestionNum + questionCount - 1}).
+   - CHỌN ĐÁP ÁN NGẪU NHIÊN VÀ KHÔNG THEO THỨ TỰ: Chọn ngẫu nhiên ${questionCount} cụm từ khác nhau trong số ${targetExampleCount} cụm từ gợi ý in đậm ở trên để làm đáp án. TUYỆT ĐỐI KHÔNG lấy lần lượt từ trên xuống dưới (ví dụ không lấy ví dụ 1 cho câu 1, ví dụ 2 cho câu 2 mà phải xáo trộn ngẫu nhiên).
    - Mỗi câu bài tập PHẢI tuân thủ chính xác mức độ khó và cấu trúc ngữ pháp của Khối lớp ${grade} đã nêu ở trên.
-   - CHÍNH XÁC VỀ NGỮ NGHĨA (SEMANTICALLY): Câu hỏi phải đúng ngữ cảnh thực tế của từ "${cleanKeyword}" (ví dụ: uniform là trang phục trường học/lễ chào cờ, artisan là nghệ nhân làm đồ gốm/thủ công, habit là thói quen ăn uống/sinh hoạt, craft là nghề truyền thống, recycle là rác thải/bảo vệ môi trường). Tuyệt đối không tạo câu vô nghĩa.
-   - CHÍNH XÁC VỀ NGỮ PHÁP (GRAMMATICALLY): Khi điền đáp án vào chỗ trống (sentenceBefore + answer + sentenceAfter), câu hoàn chỉnh phải là câu tiếng Anh chuẩn 100%. Vị trí sau "must/should/to" phải là cụm động từ nguyên mẫu; vị trí làm chủ ngữ hoặc sau tính từ phải là cụm danh từ; vị trí sau to be/linking verbs có thể là cụm tính từ.
+   - CHÍNH XÁC VỀ NGỮ NGHĨA (SEMANTICALLY): Câu hỏi phải đúng ngữ cảnh thực tế của từ "${cleanKeyword}". Tuyệt đối không tạo câu vô nghĩa.
+   - CHÍNH XÁC VỀ NGỮ PHÁP (GRAMMATICALLY): Khi điền đáp án vào chỗ trống (sentenceBefore + answer + sentenceAfter), câu hoàn chỉnh phải là câu tiếng Anh chuẩn 100%.
    - Chỗ trống phải được điền CHÍNH XÁC bằng một cụm từ (phrases) xuất hiện in đậm (boldPhrase) trong các câu ví dụ của bảng từ điển trên.
-   - Đáp án không được vượt quá ${maxWords} từ ("Do not use more than ${maxWords === 3 ? 'THREE' : maxWords} words for each phrase").
+   - ĐỘ DÀI BẮT BUỘC: Mỗi cụm gợi ý in đậm và mỗi đáp án PHẢI có từ 2 đến ${effectiveMaxWords} từ (TUYỆT ĐỐI KHÔNG 1 từ và KHÔNG từ 4 từ trở lên; "${effectiveMaxWords === 2 ? 'Use TWO words for each phrase' : 'Use TWO or THREE words for each phrase'}").
    - Cung cấp dịch nghĩa tiếng Việt chi tiết và lời giải thích ngắn gọn, sư phạm cho giáo viên và học sinh.
-${variationSeed > 0 ? `\n3. YÊU CẦU ĐỔI BỘ CÂU HỎI MỚI (Biến thể số ${variationSeed + 1}):\n   - Tạo các câu hỏi hoàn toàn mới với ngữ cảnh, cấu trúc câu và cụm collocation mục tiêu khác với những lần tạo trước cho từ "${cleanKeyword}".` : ''}
+${variationSeed > 0 ? `\n3. YÊU CẦU ĐỔI BỘ CÂU HỎI MỚI (Biến thể ngẫu nhiên mã #${variationSeed}):\n   - Tạo các câu hỏi hoàn toàn mới với ngữ cảnh, cấu trúc câu và tổ hợp cụm collocation mục tiêu khác với những lần tạo trước cho từ "${cleanKeyword}".` : ''}
 `;
 
     let response: any = null;
@@ -778,7 +789,7 @@ ${variationSeed > 0 ? `\n3. YÊU CẦU ĐỔI BỘ CÂU HỎI MỚI (Biến th�
         dictionarySource,
         questionCount,
         startQuestionNum,
-        maxWords,
+        effectiveMaxWords,
         liveOnline,
         variationSeed
       );
@@ -786,6 +797,56 @@ ${variationSeed > 0 ? `\n3. YÊU CẦU ĐỔI BỘ CÂU HỎI MỚI (Biến th�
     }
 
     const parsedData = JSON.parse(response.text);
+
+    // Validate exact bold example count (4 for 2Q, 6 for 4Q, 8 for 6Q), strict 2..3 word length, and non-sequential answers
+    const aiExamples: Array<{ fullSentence: string; boldPhrase: string }> = Array.isArray(parsedData.examples)
+      ? parsedData.examples
+      : [];
+    const aiQuestions: Array<{ questionNumber: number; answer: string }> = Array.isArray(parsedData.questions)
+      ? parsedData.questions
+      : [];
+    const isValidWordRange = (phrase: string) => {
+      const wc = (phrase || '').trim().split(/\s+/).filter(Boolean).length;
+      return wc >= 2 && wc <= effectiveMaxWords && wc <= 3;
+    };
+    const uniqueBoldSet = new Set(aiExamples.map((e) => (e.boldPhrase || '').trim().toLowerCase()).filter(Boolean));
+    const hasExactCounts =
+      aiExamples.length === targetExampleCount &&
+      uniqueBoldSet.size === targetExampleCount &&
+      aiExamples.every((e) => isValidWordRange(e.boldPhrase)) &&
+      aiQuestions.length === questionCount &&
+      aiQuestions.every((q) => uniqueBoldSet.has((q.answer || '').trim().toLowerCase()) && isValidWordRange(q.answer));
+
+    if (!hasExactCounts) {
+      const fallbackData = await createCurriculumFallback(
+        cleanKeyword,
+        grade,
+        unit,
+        unitTitle,
+        dictionarySource,
+        questionCount,
+        startQuestionNum,
+        effectiveMaxWords,
+        liveOnline,
+        variationSeed
+      );
+      return res.json(fallbackData);
+    }
+
+    // Ensure questions are NOT trivially in ascending sequential order matching examples
+    const matchedIndices = aiQuestions.map((q) =>
+      aiExamples.findIndex((e) => e.boldPhrase.trim().toLowerCase() === q.answer.trim().toLowerCase())
+    );
+    const isAscendingSequential =
+      matchedIndices.length > 1 &&
+      matchedIndices.every((idx, i) => i === 0 || idx > matchedIndices[i - 1]);
+    if (isAscendingSequential) {
+      parsedData.questions = [...parsedData.questions].reverse().map((q: any, i: number) => ({
+        ...q,
+        questionNumber: startQuestionNum + i,
+      }));
+    }
+
     const { deriveIPADetails } = await getIpaUtils();
     const ipaDetails = deriveIPADetails(cleanKeyword, parsedData.ipa);
 
